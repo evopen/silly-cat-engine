@@ -44,6 +44,7 @@ pub struct Engine {
     instance: ash::Instance,
     device: ash::Device,
     queue: vk::Queue,
+    swapchain_images: Vec<vk::ImageView>,
 }
 
 impl Engine {
@@ -185,7 +186,26 @@ impl Engine {
                 .image_array_layers(1)
                 .pre_transform(pre_transform);
 
-            swapchain_loader.create_swapchain(&swapchain_info, None)?;
+            let swapchain = swapchain_loader.create_swapchain(&swapchain_info, None)?;
+
+            let swapchain_images: Vec<vk::ImageView> = swapchain_loader
+                .get_swapchain_images(swapchain)?
+                .iter()
+                .map(|image| {
+                    let view_info = vk::ImageViewCreateInfo::builder()
+                        .view_type(vk::ImageViewType::TYPE_2D)
+                        .format(surface_format.format)
+                        .subresource_range(vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_mip_level: 0,
+                            level_count: 1,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .image(*image);
+                    device.create_image_view(&view_info, None).unwrap()
+                })
+                .collect();
 
             Ok(Self {
                 size,
@@ -193,6 +213,7 @@ impl Engine {
                 instance,
                 device,
                 queue,
+                swapchain_images,
             })
         }
     }

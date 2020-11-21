@@ -42,7 +42,13 @@ fn init_logger() -> Result<Arc<RwLock<crossbeam::queue::ArrayQueue<String>>>> {
 }
 
 fn main() -> Result<()> {
+    let bt = backtrace::Backtrace::new();
     init_logger()?;
+    std::panic::set_hook(Box::new(move |p| {
+        log::error!("{}", p.to_string());
+        log::trace!("\n{:?}", bt);
+    }));
+
     log::info!("Initializing...");
     let start_time = std::time::Instant::now();
 

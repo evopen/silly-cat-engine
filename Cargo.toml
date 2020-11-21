@@ -12,11 +12,3 @@ log = "0.4.11"
 anyhow = "1.0.34"
 chrono = "0.4"
 crossbeam = "0.8.0"
-ring-channel = "0.8"
-
-[dev-dependencies]
-criterion = "0.3"
-
-[[bench]]
-name = "ring_buffer"
-harness = false

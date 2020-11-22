@@ -28,7 +28,7 @@ fn init_logger() -> Result<Arc<RwLock<crossbeam::queue::ArrayQueue<String>>>> {
             ))
         })
         .level(log::LevelFilter::Error)
-        .level_for(env!("CARGO_CRATE_NAME"), log::LevelFilter::Trace)
+        .level_for(env!("CARGO_CRATE_NAME"), log::LevelFilter::Debug)
         .chain(std::io::stdout())
         .chain(log_file)
         .chain(fern::Output::call(move |rec| {
@@ -60,9 +60,13 @@ fn main() -> Result<()> {
         .with_transparent(false)
         .build(&event_loop)?;
 
-    let instance = val::Instance::new(val::InstanceDescription::default());
-    let surface_extensions = ash_window::enumerate_required_extensions(&window).unwrap();
-    dbg!(surface_extensions);
+    let instance = val::Instance::new(val::InstanceDescription {
+        extension_names: ash_window::enumerate_required_extensions(&window).unwrap(),
+    });
+    let surface = instance.create_surface(&window);
+    let device = instance.create_device(&surface);
+    
+
     log::info!(
         "Initialized, took {} seconds",
         start_time.elapsed().as_secs_f32()

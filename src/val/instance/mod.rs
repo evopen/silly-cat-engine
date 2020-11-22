@@ -5,15 +5,18 @@ use anyhow::{anyhow, bail, Result};
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk;
 
+use super::Device;
+use super::Surface;
+
 #[derive(Debug, Default, Clone)]
 pub struct InstanceDescription {
-    extension_names: Vec<&'static CStr>,
+    pub extension_names: Vec<&'static CStr>,
 }
 
 pub struct Instance {
-    entry: ash::Entry,
+    pub(super) entry: ash::Entry,
     instance_desc: InstanceDescription,
-    instance: ash::Instance,
+    pub(super) instance: ash::Instance,
 }
 
 impl Instance {
@@ -38,11 +41,13 @@ impl Instance {
             .map(|raw_name| raw_name.as_ptr())
             .collect();
 
-        let extension_names_raw: Vec<*const i8> = desc
+        let mut extension_names_raw: Vec<*const i8> = desc
             .extension_names
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
+        extension_names_raw.push(ash::extensions::ext::DebugUtils::name().as_ptr());
+
         let app_info = vk::ApplicationInfo::builder().api_version(vk::make_version(1, 2, 0));
         let instance_info = vk::InstanceCreateInfo::builder()
             .application_info(&app_info)
@@ -57,5 +62,20 @@ impl Instance {
                 instance,
             }
         }
+    }
+
+    pub fn create_surface(&self, window: &winit::window::Window) -> Surface {
+        if !self
+            .instance_desc
+            .extension_names
+            .contains(&ash::extensions::khr::Surface::name())
+        {
+            panic!("instance does not load surface extension");
+        }
+        Surface::new(&self.entry, &self.instance, window)
+    }
+
+    pub fn create_device(&self, surface: &Surface) -> Device {
+        Device::new(&self.entry, &self.instance, &surface.surface)
     }
 }

@@ -3,7 +3,8 @@
 use anyhow::{anyhow, bail, Result};
 use std::sync::{Arc, RwLock};
 
-mod engine;
+mod triangle;
+mod val;
 
 fn init_logger() -> Result<Arc<RwLock<crossbeam::queue::ArrayQueue<String>>>> {
     let log_file = std::fs::OpenOptions::new()
@@ -17,7 +18,7 @@ fn init_logger() -> Result<Arc<RwLock<crossbeam::queue::ArrayQueue<String>>>> {
     let ring_buf_write = ring_buf.clone();
 
     fern::Dispatch::new()
-        .format(|out, message, record| {
+        .format(move |out, message, record| {
             out.finish(format_args!(
                 "{}[{}][{}] {}",
                 chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
@@ -59,8 +60,9 @@ fn main() -> Result<()> {
         .with_transparent(false)
         .build(&event_loop)?;
 
-    let engine = engine::Engine::new(&window)?;
-
+    let instance = val::Instance::new(val::InstanceDescription::default());
+    let surface_extensions = ash_window::enumerate_required_extensions(&window).unwrap();
+    dbg!(surface_extensions);
     log::info!(
         "Initialized, took {} seconds",
         start_time.elapsed().as_secs_f32()

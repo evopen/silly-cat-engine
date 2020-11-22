@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     });
     let surface = instance.create_surface(&window);
     let device = instance.create_device(&surface);
-    
+    let swapchain = device.create_swapchain(&surface);
 
     log::info!(
         "Initialized, took {} seconds",

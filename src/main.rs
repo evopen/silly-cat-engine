@@ -3,6 +3,7 @@
 use anyhow::{anyhow, bail, Result};
 use std::sync::{Arc, RwLock};
 
+mod engine;
 mod triangle;
 mod val;
 
@@ -71,6 +72,61 @@ fn main() -> Result<()> {
         "Initialized, took {} seconds",
         start_time.elapsed().as_secs_f32()
     );
+
+    event_loop.run(move |event, _, control_flow| match event {
+        winit::event::Event::NewEvents(_) => {}
+        winit::event::Event::WindowEvent { window_id, event } => {
+            engine.input(&event);
+            match event {
+                winit::event::WindowEvent::CloseRequested => {
+                    *control_flow = winit::event_loop::ControlFlow::Exit;
+                }
+                winit::event::WindowEvent::KeyboardInput {
+                    device_id,
+                    input,
+                    is_synthetic,
+                } => match input {
+                    winit::event::KeyboardInput {
+                        virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
+                        state: winit::event::ElementState::Pressed,
+                        ..
+                    } => {
+                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                    }
+                    _ => {}
+                },
+                winit::event::WindowEvent::ScaleFactorChanged {
+                    scale_factor,
+                    new_inner_size,
+                } => {}
+                _ => {}
+            }
+        }
+        winit::event::Event::MainEventsCleared => {
+            window.request_redraw();
+        }
+        winit::event::Event::RedrawRequested(_) => {
+            engine.update();
+            if let Ok(msg) = prime_rx.try_recv() {
+                match msg {
+                    Message::RequestUpdate { path } => {
+                        action::self_update(&path);
+                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                    }
+                    Message::Exit => {
+                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                    }
+                    Message::AlwaysOnTop(b) => {
+                        window.set_always_on_top(b);
+                    }
+                }
+            }
+            engine.render();
+        }
+        winit::event::Event::RedrawEventsCleared => {}
+        winit::event::Event::LoopDestroyed => {}
+        _ => {}
+    });
 
     Ok(())
 }

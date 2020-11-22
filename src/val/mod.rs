@@ -4,6 +4,7 @@ mod surface;
 mod swapchain;
 
 pub use device::Device;
+pub use device::Queue;
 pub use instance::{Instance, InstanceDescription};
-use surface::Surface;
-use swapchain::Swapchain;
+pub use surface::Surface;
+pub use swapchain::Swapchain;

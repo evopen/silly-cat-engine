@@ -11,7 +11,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(
+    pub(super) fn new(
         entry: &ash::Entry,
         instance: &ash::Instance,
         window: &winit::window::Window,

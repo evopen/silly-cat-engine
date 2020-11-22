@@ -1,4 +1,5 @@
 mod debug;
+mod queue;
 
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
@@ -10,16 +11,22 @@ use ash::vk;
 use super::Instance;
 use super::Surface;
 use super::Swapchain;
+pub use queue::Queue;
 
 pub struct Device {
     debug_call_messenger: vk::DebugUtilsMessengerEXT,
     device: ash::Device,
     pdevice: vk::PhysicalDevice,
     instance: ash::Instance,
+    queue_family_index: u32,
 }
 
 impl Device {
-    pub fn new(entry: &ash::Entry, instance: &ash::Instance, surface: &vk::SurfaceKHR) -> Self {
+    pub(super) fn new(
+        entry: &ash::Entry,
+        instance: &ash::Instance,
+        surface: &vk::SurfaceKHR,
+    ) -> Self {
         let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
                 vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
@@ -95,6 +102,7 @@ impl Device {
                 device,
                 pdevice,
                 instance: instance.clone(),
+                queue_family_index,
             }
         }
     }
@@ -142,5 +150,9 @@ impl Device {
             .clipped(true)
             .image_array_layers(1);
         Swapchain::new(&self.instance, &self.device, &swapchain_create_info)
+    }
+
+    pub fn get_queue(&self) -> Queue {
+        Queue::new(&self.device, self.queue_family_index, 0)
     }
 }

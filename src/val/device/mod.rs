@@ -33,7 +33,10 @@ impl Device {
                     | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
                     | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
             )
-            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+            .message_type(
+                vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+            )
             .pfn_user_callback(Some(debug::vulkan_debug_callback));
         let debug_utils_loader = ash::extensions::ext::DebugUtils::new(entry, instance);
         unsafe {
@@ -115,11 +118,6 @@ impl Device {
         }
         .unwrap()[0];
 
-        let surface_resolution = vk::Extent2D {
-            width: surface.size.width,
-            height: surface.size.height,
-        };
-
         let surface_capabilities = unsafe {
             surface
                 .surface_loader
@@ -136,18 +134,37 @@ impl Device {
             surface_capabilities.current_transform
         };
 
+        let mut desired_image_count = surface_capabilities.min_image_count + 1;
+        if surface_capabilities.max_image_count > 0
+            && desired_image_count > surface_capabilities.max_image_count
+        {
+            desired_image_count = surface_capabilities.max_image_count;
+        }
+
+        let present_modes = unsafe {
+            surface
+                .surface_loader
+                .get_physical_device_surface_present_modes(self.pdevice, surface.surface)
+        }
+        .unwrap();
+        let present_mode = present_modes
+            .iter()
+            .cloned()
+            .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
+            .unwrap_or(vk::PresentModeKHR::FIFO);
+
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(surface.surface)
-            .min_image_count(3)
+            .min_image_count(desired_image_count)
             .image_color_space(surface_format.color_space)
             .image_format(surface_format.format)
-            .image_extent(surface_resolution)
+            .image_extent(surface_capabilities.current_extent)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(vk::PresentModeKHR::FIFO)
-            .clipped(true)
+            .present_mode(present_mode)
+            .clipped(false)
             .image_array_layers(1);
         Swapchain::new(&self.instance, &self.device, &swapchain_create_info)
     }

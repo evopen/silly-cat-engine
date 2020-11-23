@@ -61,13 +61,6 @@ fn main() -> Result<()> {
         .with_transparent(false)
         .build(&event_loop)?;
 
-    let instance = val::Instance::new(val::InstanceDescription {
-        extension_names: ash_window::enumerate_required_extensions(&window).unwrap(),
-    });
-    let surface = instance.create_surface(&window);
-    let device = instance.create_device(&surface);
-    let swapchain = device.create_swapchain(&surface);
-
     let mut engine = engine::Engine::new(&window);
 
     log::info!(

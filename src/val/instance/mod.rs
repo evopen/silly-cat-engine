@@ -47,6 +47,7 @@ impl Instance {
             .map(|raw_name| raw_name.as_ptr())
             .collect();
         extension_names_raw.push(ash::extensions::ext::DebugUtils::name().as_ptr());
+        extension_names_raw.push(ash::extensions::ext::DebugReport::name().as_ptr());
 
         let app_info = vk::ApplicationInfo::builder().api_version(vk::make_version(1, 2, 0));
         let instance_info = vk::InstanceCreateInfo::builder()

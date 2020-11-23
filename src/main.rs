@@ -33,11 +33,11 @@ fn init_logger() -> Result<Arc<RwLock<crossbeam::queue::ArrayQueue<String>>>> {
         .chain(std::io::stdout())
         .chain(log_file)
         .chain(fern::Output::call(move |rec| {
-            ring_buf_write
-                .write()
-                .unwrap()
-                .push(rec.args().to_string())
-                .unwrap();
+            let ring_buf_write = ring_buf_write.write().unwrap();
+            if ring_buf_write.is_full() {
+                ring_buf_write.pop().unwrap();
+            }
+            ring_buf_write.push(rec.args().to_string()).unwrap();
         }))
         .apply()?;
     Ok(ring_buf)
@@ -67,6 +67,8 @@ fn main() -> Result<()> {
     let surface = instance.create_surface(&window);
     let device = instance.create_device(&surface);
     let swapchain = device.create_swapchain(&surface);
+
+    let mut engine = engine::Engine::new(&window);
 
     log::info!(
         "Initialized, took {} seconds",
@@ -107,20 +109,7 @@ fn main() -> Result<()> {
         }
         winit::event::Event::RedrawRequested(_) => {
             engine.update();
-            if let Ok(msg) = prime_rx.try_recv() {
-                match msg {
-                    Message::RequestUpdate { path } => {
-                        action::self_update(&path);
-                        *control_flow = winit::event_loop::ControlFlow::Exit;
-                    }
-                    Message::Exit => {
-                        *control_flow = winit::event_loop::ControlFlow::Exit;
-                    }
-                    Message::AlwaysOnTop(b) => {
-                        window.set_always_on_top(b);
-                    }
-                }
-            }
+
             engine.render();
         }
         winit::event::Event::RedrawEventsCleared => {}

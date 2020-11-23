@@ -61,7 +61,19 @@ fn main() -> Result<()> {
         .with_transparent(false)
         .build(&event_loop)?;
 
-    let mut engine = engine::Engine::new(&window);
+    // let mut engine = engine::Engine::new(&window);
+
+    let instance = val::Instance::new(val::InstanceDescription {
+        extension_names: ash_window::enumerate_required_extensions(&window).unwrap(),
+    });
+    let mut surface = instance.create_surface(&window);
+    let mut device = instance.create_device(&surface);
+    let mut swapchain = device.create_swapchain(
+        &surface,
+        window.inner_size().width,
+        window.inner_size().height,
+        None,
+    );
 
     log::info!(
         "Initialized, took {} seconds",
@@ -71,8 +83,17 @@ fn main() -> Result<()> {
     event_loop.run(move |event, _, control_flow| match event {
         winit::event::Event::NewEvents(_) => {}
         winit::event::Event::WindowEvent { window_id, event } => {
-            engine.input(&event);
+            // engine.input(&event);
             match event {
+                winit::event::WindowEvent::Resized(new_inner_size) => {
+                    device.destroy_swapchain(&swapchain);
+                    swapchain = device.create_swapchain(
+                        &surface,
+                        new_inner_size.width,
+                        new_inner_size.height,
+                        None,
+                    );
+                }
                 winit::event::WindowEvent::CloseRequested => {
                     *control_flow = winit::event_loop::ControlFlow::Exit;
                 }
@@ -101,9 +122,9 @@ fn main() -> Result<()> {
             window.request_redraw();
         }
         winit::event::Event::RedrawRequested(_) => {
-            engine.update();
+            // engine.update();
 
-            engine.render();
+            // engine.render();
         }
         winit::event::Event::RedrawEventsCleared => {}
         winit::event::Event::LoopDestroyed => {}

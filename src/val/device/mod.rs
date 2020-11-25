@@ -19,6 +19,8 @@ pub struct Device {
     pdevice: vk::PhysicalDevice,
     instance: ash::Instance,
     queue_family_index: u32,
+    swapchain_loader: ash::extensions::khr::Swapchain,
+    swapchain: Option<Swapchain>,
 }
 
 impl Device {
@@ -100,17 +102,31 @@ impl Device {
 
             let queue = device.get_device_queue(queue_family_index, 0);
 
+            let swapchain_loader = ash::extensions::khr::Swapchain::new(instance, &device);
+
             Self {
                 debug_call_messenger,
                 device,
                 pdevice,
                 instance: instance.clone(),
                 queue_family_index,
+                swapchain_loader,
+                swapchain: None,
             }
         }
     }
 
-    pub fn create_swapchain(&self, surface: &Surface) -> Swapchain {
+    pub fn create_swapchain(&mut self, surface: &Surface) -> Swapchain {
+        if self.swapchain.is_some() {
+            unsafe {
+                log::info!("swapchain destroying");
+
+                self.swapchain_loader
+                    .destroy_swapchain(self.swapchain.as_ref().unwrap().swapchain, None);
+                self.swapchain = None;
+                log::info!("swapchain destroyed");
+            }
+        }
         let surface_format = unsafe {
             surface
                 .surface_loader
@@ -166,7 +182,13 @@ impl Device {
             .present_mode(present_mode)
             .clipped(false)
             .image_array_layers(1);
-        Swapchain::new(&self.instance, &self.device, &swapchain_create_info)
+        self.swapchain = Some(Swapchain::new(
+            &self.swapchain_loader,
+            &swapchain_create_info,
+        ));
+        log::info!("swapchain created");
+        dbg!(&self.swapchain.as_ref().unwrap().swapchain);
+        self.swapchain.as_ref().unwrap().clone()
     }
 
     pub fn get_queue(&self) -> Queue {

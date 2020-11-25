@@ -9,19 +9,32 @@ pub struct SwapchainDescription {
     image_count: u32,
 }
 
+#[derive(Clone)]
 pub struct Swapchain {
-    swapchain: vk::SwapchainKHR,
+    pub(super) swapchain: vk::SwapchainKHR,
+    pub(super) swapchain_loader: ash::extensions::khr::Swapchain,
 }
 
 impl Swapchain {
     pub(super) fn new(
-        instance: &ash::Instance,
-        device: &ash::Device,
+        swapchain_loader: &ash::extensions::khr::Swapchain,
         swapchain_info: &vk::SwapchainCreateInfoKHR,
     ) -> Self {
-        let swapchain_loader = ash::extensions::khr::Swapchain::new(instance, device);
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_info, None) }
             .expect(format!("{:?}", swapchain_info).as_str());
-        Self { swapchain }
+
+        Self {
+            swapchain,
+            swapchain_loader: swapchain_loader.clone(),
+        }
     }
 }
+
+// impl Drop for Swapchain {
+//     fn drop(&mut self) {
+//         unsafe {
+//             self.swapchain_loader
+//                 .destroy_swapchain(self.swapchain, None);
+//         }
+//     }
+// }

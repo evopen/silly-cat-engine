@@ -21,10 +21,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub async fn new(
-        window: &winit::window::Window,
-        log_rx: crossbeam::channel::Receiver<String>,
-    ) -> Self {
+    pub fn new(window: &winit::window::Window) -> Self {
         let size = window.inner_size();
         let instance = val::Instance::new(val::InstanceDescription {
             extension_names: ash_window::enumerate_required_extensions(window).unwrap(),
@@ -58,28 +55,28 @@ impl Engine {
     }
 
     fn resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
-        self.size.clone_from(new_size);
-        self.swapchain = self.device.create_swapchain(&self.surface);
         log::info!(
-            "swap chain resized to {}, {}",
+            "swap chain resizing to {}, {}",
             self.size.width,
             self.size.height
         );
-        self.app.resize(&new_size);
+        self.size.clone_from(new_size);
+        self.device.destroy_swapchain(&self.swapchain);
+        self.swapchain =
+            self.device
+                .create_swapchain(&self.surface, new_size.width, new_size.height, None);
     }
 
-    pub fn update(&mut self) {
-        self.app.update();
-    }
+    pub fn update(&mut self) {}
 
     pub fn render(&mut self) {
-        let frame = self.swap_chain.get_current_frame().unwrap().output;
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("main encoder"),
-            });
-        self.app.encode(&mut encoder, &frame.view);
-        self.queue.submit(std::iter::once(encoder.finish()));
+        // let frame = self.swap_chain.get_current_frame().unwrap().output;
+        // let mut encoder = self
+        //     .device
+        //     .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        //         label: Some("main encoder"),
+        //     });
+        // self.app.encode(&mut encoder, &frame.view);
+        // self.queue.submit(std::iter::once(encoder.finish()));
     }
 }

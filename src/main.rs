@@ -3,8 +3,8 @@
 use anyhow::{anyhow, bail, Result};
 use std::sync::{Arc, RwLock};
 
-mod engine;
-mod triangle;
+// mod engine;
+// mod triangle;
 mod val;
 
 fn init_logger() -> Result<Arc<RwLock<crossbeam::queue::ArrayQueue<String>>>> {
@@ -68,12 +68,7 @@ fn main() -> Result<()> {
     });
     let mut surface = instance.create_surface(&window);
     let mut device = instance.create_device(&surface);
-    let mut swapchain = device.create_swapchain(
-        &surface,
-        window.inner_size().width,
-        window.inner_size().height,
-        None,
-    );
+    let mut swapchain = device.create_swapchain(&surface);
 
     log::info!(
         "Initialized, took {} seconds",
@@ -86,13 +81,7 @@ fn main() -> Result<()> {
             // engine.input(&event);
             match event {
                 winit::event::WindowEvent::Resized(new_inner_size) => {
-                    device.destroy_swapchain(&swapchain);
-                    swapchain = device.create_swapchain(
-                        &surface,
-                        new_inner_size.width,
-                        new_inner_size.height,
-                        None,
-                    );
+                    let swapchain = device.create_swapchain(&surface);
                 }
                 winit::event::WindowEvent::CloseRequested => {
                     *control_flow = winit::event_loop::ControlFlow::Exit;

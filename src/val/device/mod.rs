@@ -1,3 +1,4 @@
+mod command_buffer;
 mod debug;
 mod queue;
 
@@ -13,6 +14,7 @@ use std::collections::HashMap;
 use super::Instance;
 use super::Surface;
 use super::Swapchain;
+pub use command_buffer::CommandBuffer;
 pub use queue::Queue;
 
 pub struct Device {
@@ -24,6 +26,7 @@ pub struct Device {
     swapchain_loader: ash::extensions::khr::Swapchain,
     swapchains: HashMap<Surface, Swapchain>,
     surface_loader: ash::extensions::khr::Surface,
+    command_pool: vk::CommandPool,
 }
 
 impl Device {
@@ -107,6 +110,12 @@ impl Device {
 
             let swapchain_loader = ash::extensions::khr::Swapchain::new(instance, &device);
 
+            let command_pool_info =
+                vk::CommandPoolCreateInfo::builder().queue_family_index(queue_family_index);
+            let command_pool = device
+                .create_command_pool(&command_pool_info, None)
+                .unwrap();
+
             Self {
                 debug_call_messenger,
                 device,
@@ -116,18 +125,12 @@ impl Device {
                 swapchain_loader,
                 swapchains: HashMap::new(),
                 surface_loader,
+                command_pool,
             }
         }
     }
 
     pub fn create_swapchain(&mut self, surface: &Surface) -> Swapchain {
-        if let Some(swapchain) = self.swapchains.remove(&surface) {
-            log::info!("destroying swapchain");
-            unsafe {
-                self.swapchain_loader
-                    .destroy_swapchain(swapchain.swapchain, None)
-            };
-        }
         let surface_format = unsafe {
             self.surface_loader
                 .get_physical_device_surface_formats(self.pdevice, surface.surface)
@@ -167,7 +170,12 @@ impl Device {
             .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+        let old_swapchain = match self.swapchains.get(&surface) {
+            Some(swapchain) => swapchain.swapchain,
+            None => vk::SwapchainKHR::null(),
+        };
+
+        let mut swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(surface.surface)
             .min_image_count(desired_image_count)
             .image_color_space(surface_format.color_space)
@@ -179,15 +187,21 @@ impl Device {
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(present_mode)
             .clipped(false)
-            .image_array_layers(1);
+            .image_array_layers(1)
+            .old_swapchain(old_swapchain);
 
         log::info!("creating swapchain");
-        let swapchain = Swapchain::new(&self.swapchain_loader, &swapchain_create_info);
+        let swapchain =
+            Swapchain::new(&self.swapchain_loader, &swapchain_create_info, &self.device);
         self.swapchains.insert(surface.clone(), swapchain.clone());
         swapchain
     }
 
     pub fn get_queue(&self) -> Queue {
         Queue::new(&self.device, self.queue_family_index, 0)
+    }
+
+    pub fn create_command_buffer(&mut self) -> CommandBuffer {
+        CommandBuffer::new(self.command_pool, &self.device)
     }
 }

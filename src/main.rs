@@ -114,6 +114,7 @@ fn main() -> Result<()> {
             // engine.update();
 
             // engine.render();
+            let view = swapchain.get_current_frame();
         }
         winit::event::Event::RedrawEventsCleared => {}
         winit::event::Event::LoopDestroyed => {}

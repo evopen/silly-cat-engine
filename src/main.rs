@@ -3,6 +3,8 @@
 use anyhow::{anyhow, bail, Result};
 use std::sync::{Arc, RwLock};
 
+use ash::vk;
+
 // mod engine;
 // mod triangle;
 mod val;
@@ -43,6 +45,13 @@ fn init_logger() -> Result<Arc<RwLock<crossbeam::queue::ArrayQueue<String>>>> {
     Ok(ring_buf)
 }
 
+#[repr(u64)]
+enum SemaphoreState {
+    Initial,
+    Wait,
+    Finish,
+}
+
 fn main() -> Result<()> {
     let bt = backtrace::Backtrace::new();
     init_logger()?;
@@ -68,7 +77,9 @@ fn main() -> Result<()> {
     });
     let mut surface = instance.create_surface(&window);
     let mut device = instance.create_device(&surface);
+    let mut queue = device.get_queue();
     let mut swapchain = device.create_swapchain(&surface);
+    let semaphore = device.create_semaphore(SemaphoreState::Initial as u64);
 
     log::info!(
         "Initialized, took {} seconds",
@@ -115,6 +126,14 @@ fn main() -> Result<()> {
 
             // engine.render();
             let view = swapchain.get_current_frame();
+            let cmd_buf = device.create_command_buffer();
+            queue.submit(
+                cmd_buf,
+                semaphore,
+                SemaphoreState::Wait as u64,
+                SemaphoreState::Finish as u64,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+            );
         }
         winit::event::Event::RedrawEventsCleared => {}
         winit::event::Event::LoopDestroyed => {}

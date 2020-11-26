@@ -204,4 +204,15 @@ impl Device {
     pub fn create_command_buffer(&mut self) -> CommandBuffer {
         CommandBuffer::new(self.command_pool, &self.device)
     }
+
+    pub fn create_semaphore(&mut self, initial_value: u64) -> vk::Semaphore {
+        let mut timeline_semaphore_info = vk::SemaphoreTypeCreateInfo::builder()
+            .semaphore_type(vk::SemaphoreType::TIMELINE)
+            .initial_value(initial_value)
+            .build();
+        let semaphore_info =
+            vk::SemaphoreCreateInfo::builder().push_next(&mut timeline_semaphore_info);
+
+        unsafe { self.device.create_semaphore(&semaphore_info, None) }.unwrap()
+    }
 }

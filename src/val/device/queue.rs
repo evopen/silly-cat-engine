@@ -18,11 +18,24 @@ impl Queue {
         }
     }
 
-    pub fn submit(&self, cmd_buf: &CommandBuffer, semaphore: vk::Semaphore) {
+    pub fn submit(
+        &self,
+        cmd_buf: CommandBuffer,
+        semaphore: vk::Semaphore,
+        wait_value: u64,
+        signal_value: u64,
+        wait_stage: vk::PipelineStageFlags,
+    ) {
+        let mut timeline_info = vk::TimelineSemaphoreSubmitInfo::builder()
+            .wait_semaphore_values(&[wait_value])
+            .signal_semaphore_values(&[signal_value])
+            .build();
         let submit_info = vk::SubmitInfo::builder()
             .command_buffers(&[cmd_buf.command_buffer])
             .wait_semaphores(&[semaphore])
             .signal_semaphores(&[semaphore])
+            .wait_dst_stage_mask(&[wait_stage])
+            .push_next(&mut timeline_info)
             .build();
         unsafe {
             self.device

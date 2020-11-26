@@ -17,6 +17,7 @@ pub struct Instance {
     pub(super) entry: ash::Entry,
     instance_desc: InstanceDescription,
     pub(super) instance: ash::Instance,
+    pub(super) surface_loader: ash::extensions::khr::Surface,
 }
 
 impl Instance {
@@ -57,10 +58,13 @@ impl Instance {
 
         unsafe {
             let instance = entry.create_instance(&instance_info, None).unwrap();
+            let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
+
             Self {
                 entry,
                 instance_desc: desc,
                 instance,
+                surface_loader,
             }
         }
     }
@@ -73,7 +77,7 @@ impl Instance {
         {
             panic!("instance does not load surface extension");
         }
-        Surface::new(&self.entry, &self.instance, window)
+        Surface::new(&self.entry, &self.instance, window, &self.surface_loader)
     }
 
     pub fn create_device(&self, surface: &Surface) -> Device {

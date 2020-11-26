@@ -12,7 +12,6 @@ pub struct SwapchainDescription {
 #[derive(Clone)]
 pub struct Swapchain {
     pub(super) swapchain: vk::SwapchainKHR,
-    pub(super) swapchain_loader: ash::extensions::khr::Swapchain,
 }
 
 impl Swapchain {
@@ -23,18 +22,6 @@ impl Swapchain {
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_info, None) }
             .expect(format!("{:?}", swapchain_info).as_str());
 
-        Self {
-            swapchain,
-            swapchain_loader: swapchain_loader.clone(),
-        }
+        Self { swapchain }
     }
 }
-
-// impl Drop for Swapchain {
-//     fn drop(&mut self) {
-//         unsafe {
-//             self.swapchain_loader
-//                 .destroy_swapchain(self.swapchain, None);
-//         }
-//     }
-// }

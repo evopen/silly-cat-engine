@@ -8,6 +8,8 @@ use anyhow::{anyhow, bail, Result};
 use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 use ash::vk;
 
+use std::collections::HashMap;
+
 use super::Instance;
 use super::Surface;
 use super::Swapchain;
@@ -20,7 +22,8 @@ pub struct Device {
     instance: ash::Instance,
     queue_family_index: u32,
     swapchain_loader: ash::extensions::khr::Swapchain,
-    swapchain: Option<Swapchain>,
+    swapchains: HashMap<Surface, Swapchain>,
+    surface_loader: ash::extensions::khr::Surface,
 }
 
 impl Device {
@@ -111,32 +114,28 @@ impl Device {
                 instance: instance.clone(),
                 queue_family_index,
                 swapchain_loader,
-                swapchain: None,
+                swapchains: HashMap::new(),
+                surface_loader,
             }
         }
     }
 
     pub fn create_swapchain(&mut self, surface: &Surface) -> Swapchain {
-        if self.swapchain.is_some() {
+        if let Some(swapchain) = self.swapchains.remove(&surface) {
+            log::info!("destroying swapchain");
             unsafe {
-                log::info!("swapchain destroying");
-
                 self.swapchain_loader
-                    .destroy_swapchain(self.swapchain.as_ref().unwrap().swapchain, None);
-                self.swapchain = None;
-                log::info!("swapchain destroyed");
-            }
+                    .destroy_swapchain(swapchain.swapchain, None)
+            };
         }
         let surface_format = unsafe {
-            surface
-                .surface_loader
+            self.surface_loader
                 .get_physical_device_surface_formats(self.pdevice, surface.surface)
         }
         .unwrap()[0];
 
         let surface_capabilities = unsafe {
-            surface
-                .surface_loader
+            self.surface_loader
                 .get_physical_device_surface_capabilities(self.pdevice, surface.surface)
         }
         .unwrap();
@@ -158,8 +157,7 @@ impl Device {
         }
 
         let present_modes = unsafe {
-            surface
-                .surface_loader
+            self.surface_loader
                 .get_physical_device_surface_present_modes(self.pdevice, surface.surface)
         }
         .unwrap();
@@ -182,13 +180,11 @@ impl Device {
             .present_mode(present_mode)
             .clipped(false)
             .image_array_layers(1);
-        self.swapchain = Some(Swapchain::new(
-            &self.swapchain_loader,
-            &swapchain_create_info,
-        ));
-        log::info!("swapchain created");
-        dbg!(&self.swapchain.as_ref().unwrap().swapchain);
-        self.swapchain.as_ref().unwrap().clone()
+
+        log::info!("creating swapchain");
+        let swapchain = Swapchain::new(&self.swapchain_loader, &swapchain_create_info);
+        self.swapchains.insert(surface.clone(), swapchain.clone());
+        swapchain
     }
 
     pub fn get_queue(&self) -> Queue {

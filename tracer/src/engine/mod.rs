@@ -707,8 +707,11 @@ impl Engine {
         P: AsRef<[u8]>,
     {
         let raw_bytes = spv.as_ref();
+        let aligned = shaders::AlignedSpirv {
+            code: raw_bytes.to_vec(),
+        };
         let mut info = vk::ShaderModuleCreateInfo::builder()
-            .code(bytemuck::cast_slice(raw_bytes))
+            .code(bytemuck::cast_slice(aligned.code.as_slice()))
             .build();
 
         unsafe { Ok(self.vulkan.device.create_shader_module(&info, None)?) }

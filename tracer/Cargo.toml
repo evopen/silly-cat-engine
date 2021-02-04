@@ -28,6 +28,7 @@ vk-mem = { version = "0.2.2", features = ["link_vulkan"] }
 # gpu-allocator = "0.4.0"
 rust-embed= "5.9.0"
 num-traits = "0.2.14"
+byteorder = "1.4.2"
 
 [build-dependencies]
 shaderc = "0.7.1"

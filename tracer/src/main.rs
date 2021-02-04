@@ -1,8 +1,8 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused))]
-#![cfg_attr(
-    all(not(debug_assertions), target_os = "windows"),
-    windows_subsystem = "windows"
-)]
+// #![cfg_attr(
+//     all(not(debug_assertions), target_os = "windows"),
+//     windows_subsystem = "windows"
+// )]
 
 mod engine;
 

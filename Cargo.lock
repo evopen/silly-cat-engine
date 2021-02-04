@@ -1521,6 +1521,7 @@ dependencies = [
  "ash",
  "ash-window",
  "bytemuck",
+ "byteorder",
  "chrono",
  "egui",
  "fern",

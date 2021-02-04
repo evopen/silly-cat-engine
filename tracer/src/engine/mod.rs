@@ -3,6 +3,7 @@ mod buffer;
 mod camera;
 mod command_buffer;
 mod image;
+mod model;
 mod queue;
 mod shaders;
 mod swapchain;
@@ -12,6 +13,7 @@ use buffer::Buffer;
 use command_buffer::CommandBuffer;
 use image::Image;
 use khr::Surface;
+use model::Model;
 use queue::Queue;
 use shaders::Shaders;
 
@@ -135,6 +137,7 @@ pub struct Engine {
     instance_buffer: Option<Buffer>,
     bottom_as: Option<AccelerationStructure>,
     top_as: Option<AccelerationStructure>,
+    model: Model,
     vulkan: Arc<Vulkan>,
     queue: Queue,
 }
@@ -385,6 +388,8 @@ impl Engine {
                     .build(),
             );
 
+            let model = Model::new(&gltf::Gltf::open("tracer/models/Box.glb")?, vulkan.clone())?;
+
             Ok(Self {
                 ray_tracing_pipeline_properties,
                 size,
@@ -411,6 +416,7 @@ impl Engine {
                 bottom_as: None,
                 vulkan,
                 queue,
+                model,
             })
         }
     }
@@ -532,28 +538,14 @@ impl Engine {
         };
 
         unsafe {
-            let geometry = vk::AccelerationStructureGeometryKHR::builder()
-                .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-                .flags(vk::GeometryFlagsKHR::OPAQUE)
-                .geometry(vk::AccelerationStructureGeometryDataKHR {
-                    triangles: vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-                        .vertex_data(vertex_buffer_device_address)
-                        .vertex_format(vk::Format::R32G32B32_SFLOAT)
-                        .vertex_stride(std::mem::size_of::<f32>() as u64 * 3)
-                        .index_data(index_buffer_device_address)
-                        .index_type(vk::IndexType::UINT32)
-                        .transform_data(transform_buffer_device_address)
-                        .max_vertex(3)
-                        .build(),
-                })
-                .build();
             let bottom_as = AccelerationStructure::new(
-                &[geometry],
+                self.model.geometries(),
                 vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-                1,
+                self.model.geometry_triangle_count(),
                 self.vulkan.clone(),
                 &self.queue,
             )?;
+            dbg!(&self.model.geometry_triangle_count());
 
             self.bottom_as = Some(bottom_as);
         }

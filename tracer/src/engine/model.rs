@@ -36,7 +36,7 @@ impl Model {
             match gltf_buffer.source() {
                 gltf::buffer::Source::Bin => {
                     let bin = model.blob.as_ref().unwrap().as_slice();
-                    buffer.copy_into(bin.as_ptr());
+                    buffer.copy_from(bin.as_ptr());
                 }
                 gltf::buffer::Source::Uri(_) => {
                     panic!("fuck")
@@ -83,7 +83,8 @@ impl Model {
                         };
 
                         let (_, accessor) = primitive
-                            .attributes().find(|(semantic, _)| semantic.eq(&gltf::Semantic::Positions))
+                            .attributes()
+                            .find(|(semantic, _)| semantic.eq(&gltf::Semantic::Positions))
                             .unwrap();
                         let vertex_format = match accessor.data_type() {
                             gltf::accessor::DataType::F32 => vk::Format::R32G32B32_SFLOAT,

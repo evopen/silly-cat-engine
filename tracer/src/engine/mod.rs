@@ -32,9 +32,7 @@ use std::{
     time::Duration,
 };
 
-
-
-use anyhow::{Result};
+use anyhow::Result;
 
 use ash::vk;
 use ash::{
@@ -45,12 +43,9 @@ use ash::{
 
 use log::{debug, info};
 
-use vk_mem::{MemoryUsage};
+use vk_mem::MemoryUsage;
 
-use self::{
-    queue::{Fence},
-    swapchain::Swapchain,
-};
+use self::{queue::Fence, swapchain::Swapchain};
 
 const VERTICES: [f32; 9] = [0.25, 0.25, 0.0, -0.25, 0.25, 0.0, 0.0, -0.25, 0.0];
 const INDICES: [u32; 3] = [0, 1, 2];
@@ -348,7 +343,7 @@ impl Engine {
                 vk_mem::MemoryUsage::CpuToGpu,
                 vulkan.clone(),
             )?;
-            vertices_buffer.copy_into(std::mem::transmute(&VERTICES))?;
+            vertices_buffer.copy_from(std::mem::transmute(&VERTICES))?;
 
             let indices_buffer = Buffer::new(
                 std::mem::size_of_val(&INDICES),
@@ -357,7 +352,7 @@ impl Engine {
                 vk_mem::MemoryUsage::CpuToGpu,
                 vulkan.clone(),
             )?;
-            indices_buffer.copy_into(std::mem::transmute(&INDICES))?;
+            indices_buffer.copy_from(std::mem::transmute(&INDICES))?;
 
             let transform_buffer = Buffer::new(
                 std::mem::size_of_val(&TRANSFORM),
@@ -366,7 +361,7 @@ impl Engine {
                 vk_mem::MemoryUsage::CpuToGpu,
                 vulkan.clone(),
             )?;
-            transform_buffer.copy_into(std::mem::transmute(&TRANSFORM))?;
+            transform_buffer.copy_from(std::mem::transmute(&TRANSFORM))?;
 
             let render_finish_semaphore = vulkan
                 .device

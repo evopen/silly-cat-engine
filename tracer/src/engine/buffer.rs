@@ -1,9 +1,7 @@
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use ash::{version::DeviceV1_2, vk};
-
-
 
 use super::Vulkan;
 
@@ -78,7 +76,7 @@ impl Buffer {
             .context("buffer does not support device addressing")?)
     }
 
-    pub fn copy_into(&self, ptr: *const u8) -> Result<()> {
+    pub fn copy_from(&self, ptr: *const u8) -> Result<()> {
         let mapped = self.vulkan.allocator.map_memory(&self.allocation)?;
         unsafe {
             std::ptr::copy_nonoverlapping(ptr, mapped, self.size);

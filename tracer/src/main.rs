@@ -60,34 +60,33 @@ fn main() -> Result<()> {
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = winit::event_loop::ControlFlow::Poll;
+            engine.input(&event).unwrap();
+
             match event {
                 winit::event::Event::NewEvents(_) => {}
                 winit::event::Event::WindowEvent {
                     window_id: _,
                     event,
-                } => {
-                    engine.input(&event).unwrap();
-                    match event {
-                        winit::event::WindowEvent::CloseRequested => {
+                } => match event {
+                    winit::event::WindowEvent::CloseRequested => {
+                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                    }
+                    winit::event::WindowEvent::KeyboardInput {
+                        device_id: _,
+                        input,
+                        is_synthetic: _,
+                    } => match input {
+                        winit::event::KeyboardInput {
+                            virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
+                            state: winit::event::ElementState::Pressed,
+                            ..
+                        } => {
                             *control_flow = winit::event_loop::ControlFlow::Exit;
                         }
-                        winit::event::WindowEvent::KeyboardInput {
-                            device_id: _,
-                            input,
-                            is_synthetic: _,
-                        } => match input {
-                            winit::event::KeyboardInput {
-                                virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
-                                state: winit::event::ElementState::Pressed,
-                                ..
-                            } => {
-                                *control_flow = winit::event_loop::ControlFlow::Exit;
-                            }
-                            _ => {}
-                        },
                         _ => {}
-                    }
-                }
+                    },
+                    _ => {}
+                },
                 winit::event::Event::MainEventsCleared => {
                     window.request_redraw();
                 }

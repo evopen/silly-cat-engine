@@ -10,7 +10,9 @@ mod swapchain;
 
 use acceleration_structure::AccelerationStructure;
 use buffer::Buffer;
+use camera::Camera;
 use command_buffer::CommandBuffer;
+use glam::Vec3A as Vec3;
 use image::Image;
 
 use model::Model;
@@ -82,9 +84,9 @@ unsafe extern "system" fn vulkan_debug_callback(
         message,
     );
 
-    if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
-        panic!("deal with vulkan validation error, exiting");
-    }
+    // if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+    //     panic!("deal with vulkan validation error, exiting");
+    // }
 
     vk::FALSE
 }
@@ -129,6 +131,8 @@ pub struct Engine {
     model: Model,
     vulkan: Arc<Vulkan>,
     queue: Queue,
+    camera: Camera,
+    uniform_buffer: Buffer,
 }
 
 impl Engine {
@@ -379,6 +383,15 @@ impl Engine {
 
             let model = Model::new(&gltf::Gltf::open("tracer/models/Box.glb")?, vulkan.clone())?;
 
+            let camera = Camera::new(Vec3::new(0.0, 0.0, 2.0), Vec3::new(0.0, 0.0, 0.0));
+
+            let uniform_buffer = Buffer::new(
+                std::mem::size_of::<camera::CameraUniform>(),
+                vk::BufferUsageFlags::UNIFORM_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                MemoryUsage::CpuToGpu,
+                vulkan.clone(),
+            )?;
+
             Ok(Self {
                 ray_tracing_pipeline_properties,
                 size,
@@ -406,6 +419,8 @@ impl Engine {
                 vulkan,
                 queue,
                 model,
+                camera,
+                uniform_buffer,
             })
         }
     }
@@ -505,6 +520,15 @@ impl Engine {
                         .image_info(&[vk::DescriptorImageInfo::builder()
                             .image_view(self.storage_image.as_ref().unwrap().view())
                             .image_layout(vk::ImageLayout::GENERAL)
+                            .build()])
+                        .build(),
+                    vk::WriteDescriptorSet::builder()
+                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                        .dst_binding(2)
+                        .dst_set(self.descriptor_set.unwrap())
+                        .buffer_info(&[vk::DescriptorBufferInfo::builder()
+                            .buffer(self.uniform_buffer.handle)
+                            .range(vk::WHOLE_SIZE)
                             .build()])
                         .build(),
                 ],
@@ -609,6 +633,12 @@ impl Engine {
                             .binding(1)
                             .descriptor_count(1)
                             .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                            .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+                            .build(),
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(2)
+                            .descriptor_count(1)
+                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                             .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
                             .build(),
                     ])
@@ -797,18 +827,34 @@ impl Engine {
         }
     }
 
-    pub fn input(&mut self, event: &winit::event::WindowEvent) -> Result<()> {
+    pub fn input(&mut self, event: &winit::event::Event<()>) -> Result<()> {
         match event {
-            winit::event::WindowEvent::Resized(_) => {
-                self.swapchain.renew()?;
-            }
-            _ => {}
+            winit::event::Event::NewEvents(_) => {}
+            winit::event::Event::WindowEvent { window_id, event } => match event {
+                winit::event::WindowEvent::Resized(_) => {
+                    self.swapchain.renew()?;
+                }
+                _ => {}
+            },
+            winit::event::Event::DeviceEvent { device_id, event } => {}
+            winit::event::Event::UserEvent(_) => {}
+            winit::event::Event::Suspended => {}
+            winit::event::Event::Resumed => {}
+            winit::event::Event::MainEventsCleared => {}
+            winit::event::Event::RedrawRequested(_) => {}
+            winit::event::Event::RedrawEventsCleared => {}
+            winit::event::Event::LoopDestroyed => {}
         }
+        self.camera.input(&event);
 
         Ok(())
     }
 
-    pub fn update(&self) -> Result<()> {
+    pub fn update(&mut self) -> Result<()> {
+        let mapped = self.uniform_buffer.map()?;
+        self.uniform_buffer
+            .copy_from(unsafe { std::mem::transmute(self.camera.camera_uniform()) })?;
+        self.uniform_buffer.unmap();
         Ok(())
     }
 

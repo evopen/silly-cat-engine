@@ -42,7 +42,7 @@ impl CommandBuffer {
         unsafe {
             self.device
                 .begin_command_buffer(self.handle, &vk::CommandBufferBeginInfo::default())?;
-            func(self.handle);
+            func(self.handle)?;
             self.device.end_command_buffer(self.handle)?;
             Ok(())
         }

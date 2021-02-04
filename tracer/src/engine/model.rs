@@ -36,7 +36,7 @@ impl Model {
             match gltf_buffer.source() {
                 gltf::buffer::Source::Bin => {
                     let bin = model.blob.as_ref().unwrap().as_slice();
-                    buffer.copy_from(bin.as_ptr());
+                    buffer.copy_from(bin.as_ptr())?;
                 }
                 gltf::buffer::Source::Uri(_) => {
                     panic!("fuck")

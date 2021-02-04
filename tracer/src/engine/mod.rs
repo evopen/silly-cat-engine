@@ -17,12 +17,9 @@ use model::Model;
 use queue::Queue;
 use shaders::Shaders;
 
-use rust_embed::RustEmbed;
-
 use std::{
     borrow::Cow,
-    collections::BTreeSet,
-    collections::{BTreeMap, LinkedList},
+    collections::BTreeMap,
     ffi::{CStr, CString},
     io::Write,
     mem::size_of_val,
@@ -450,7 +447,7 @@ impl Engine {
             command_buffer.encode(|buf| {
                 image.cmd_set_layout(buf, vk::ImageLayout::GENERAL)?;
                 Ok(())
-            });
+            })?;
 
             self.queue
                 .submit_binary(command_buffer, &[], &[], &[])?
@@ -870,7 +867,7 @@ impl Engine {
             self.storage_image.as_mut().unwrap().cmd_set_layout(
                 command_buffer.handle(),
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            );
+            )?;
 
             self.swapchain.images()[index as usize].cmd_set_layout(
                 command_buffer.handle(),
@@ -913,13 +910,13 @@ impl Engine {
             self.storage_image
                 .as_mut()
                 .unwrap()
-                .cmd_set_layout(command_buffer.handle(), vk::ImageLayout::GENERAL);
+                .cmd_set_layout(command_buffer.handle(), vk::ImageLayout::GENERAL)?;
             self.vulkan
                 .device
                 .end_command_buffer(command_buffer.handle())?;
 
             debug!("record complete");
-            self.render_finish_fence.wait();
+            self.render_finish_fence.wait()?;
             debug!("render finished");
 
             self.render_finish_fence = self.queue.submit_binary(

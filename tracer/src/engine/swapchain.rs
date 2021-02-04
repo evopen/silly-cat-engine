@@ -1,6 +1,6 @@
-use std::{rc::Rc, sync::Arc};
+use std::{sync::Arc};
 
-use ash::{extensions, vk};
+use ash::{vk};
 
 use anyhow::Result;
 

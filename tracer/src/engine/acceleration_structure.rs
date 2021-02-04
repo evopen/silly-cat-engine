@@ -1,7 +1,7 @@
-use std::{mem::ManuallyDrop, rc::Rc, sync::Arc};
+use std::{sync::Arc};
 
 use anyhow::Result;
-use ash::{extensions::khr, vk};
+use ash::{vk};
 
 use super::{buffer::Buffer, command_buffer::CommandBuffer, queue::Queue, Vulkan};
 

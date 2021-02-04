@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use core::panic;
-use std::path::Path;
+
 use std::sync::Arc;
 
 use ash::vk;
@@ -83,9 +83,7 @@ impl Model {
                         };
 
                         let (_, accessor) = primitive
-                            .attributes()
-                            .filter(|(semantic, _)| semantic.eq(&gltf::Semantic::Positions))
-                            .next()
+                            .attributes().find(|(semantic, _)| semantic.eq(&gltf::Semantic::Positions))
                             .unwrap();
                         let vertex_format = match accessor.data_type() {
                             gltf::accessor::DataType::F32 => vk::Format::R32G32B32_SFLOAT,
@@ -128,8 +126,8 @@ impl Model {
             })
             .collect();
 
-        let geometries_triangle_count = model.meshes().fold(0, |acc, mesh| {
-            mesh.primitives().fold(0, |acc, prim| {
+        let geometries_triangle_count = model.meshes().fold(0, |_acc, mesh| {
+            mesh.primitives().fold(0, |_acc, prim| {
                 let indices = prim.indices().unwrap();
                 indices.count() / 3
             })
@@ -155,9 +153,9 @@ impl Model {
 fn process_node(node: &gltf::Node) {
     for node in node.children() {
         process_node(&node);
-        let transform = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
+        let _transform = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
         if let Some(mesh) = node.mesh() {
-            for primitive in mesh.primitives() {}
+            for _primitive in mesh.primitives() {}
         }
     }
 }

@@ -8,8 +8,8 @@ mod engine;
 
 use engine::Engine;
 
-use anyhow::{bail, Context, Result};
-use log::{debug, error, info, trace, warn};
+use anyhow::{Result};
+
 
 fn init_logger() -> Result<()> {
     let log_file = std::fs::OpenOptions::new()
@@ -63,16 +63,16 @@ fn main() -> Result<()> {
             *control_flow = winit::event_loop::ControlFlow::Poll;
             match event {
                 winit::event::Event::NewEvents(_) => {}
-                winit::event::Event::WindowEvent { window_id, event } => {
+                winit::event::Event::WindowEvent { window_id: _, event } => {
                     engine.input(&event);
                     match event {
                         winit::event::WindowEvent::CloseRequested => {
                             *control_flow = winit::event_loop::ControlFlow::Exit;
                         }
                         winit::event::WindowEvent::KeyboardInput {
-                            device_id,
+                            device_id: _,
                             input,
-                            is_synthetic,
+                            is_synthetic: _,
                         } => match input {
                             winit::event::KeyboardInput {
                                 virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),

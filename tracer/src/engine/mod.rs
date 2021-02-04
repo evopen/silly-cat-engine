@@ -12,7 +12,7 @@ use acceleration_structure::AccelerationStructure;
 use buffer::Buffer;
 use command_buffer::CommandBuffer;
 use image::Image;
-use khr::Surface;
+
 use model::Model;
 use queue::Queue;
 use shaders::Shaders;
@@ -32,26 +32,23 @@ use std::{
     time::Duration,
 };
 
-use bytemuck::{Pod, Zeroable};
 
-use anyhow::{bail, Context, Result};
+
+use anyhow::{Result};
 
 use ash::vk;
 use ash::{
     extensions::ext,
     extensions::khr,
-    version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0, InstanceV1_1, InstanceV1_2},
+    version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0, InstanceV1_1},
 };
-use bytemuck::cast_slice;
+
 use log::{debug, info};
-use vk::{
-    AccelerationStructureInfoNV, AccelerationStructureNV, Handle, SwapchainKHR,
-    WriteDescriptorSetAccelerationStructureKHR,
-};
-use vk_mem::{AllocatorCreateFlags, MemoryUsage};
+
+use vk_mem::{MemoryUsage};
 
 use self::{
-    queue::{Fence, TimelineSemaphore},
+    queue::{Fence},
     swapchain::Swapchain,
 };
 
@@ -197,7 +194,7 @@ impl Engine {
                 .pfn_user_callback(Some(vulkan_debug_callback));
 
             let debug_utils_loader = ext::DebugUtils::new(&entry, &instance);
-            let debug_call_back = debug_utils_loader
+            let _debug_call_back = debug_utils_loader
                 .create_debug_utils_messenger(&debug_info, None)
                 .unwrap();
             let surface = ash_window::create_surface(&entry, &instance, window, None).unwrap();
@@ -290,7 +287,7 @@ impl Engine {
             let swapchain_loader = khr::Swapchain::new(&instance, &device);
 
             let allocator = vk_mem::Allocator::new(&vk_mem::AllocatorCreateInfo {
-                physical_device: pdevice.clone(),
+                physical_device: pdevice,
                 device: device.clone(),
                 instance: instance.clone(),
                 flags: vk_mem::AllocatorCreateFlags::from_bits_unchecked(0x0000_0020),
@@ -319,14 +316,14 @@ impl Engine {
 
             let swapchain = Swapchain::new(vulkan.clone())?;
 
-            let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            let _command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
                 .command_buffer_count(2)
                 .command_pool(command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY);
 
-            let mut image_layout_keeper = BTreeMap::new();
+            let image_layout_keeper = BTreeMap::new();
 
-            let device_memory_properties = instance.get_physical_device_memory_properties(pdevice);
+            let _device_memory_properties = instance.get_physical_device_memory_properties(pdevice);
 
             let descriptor_pool = vulkan.device.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::builder()
@@ -527,13 +524,13 @@ impl Engine {
     }
 
     fn create_bottom_level_acceleration_structure(&mut self) -> Result<()> {
-        let vertex_buffer_device_address = vk::DeviceOrHostAddressConstKHR {
+        let _vertex_buffer_device_address = vk::DeviceOrHostAddressConstKHR {
             device_address: self.vertices_buffer.device_address()?,
         };
-        let index_buffer_device_address = vk::DeviceOrHostAddressConstKHR {
+        let _index_buffer_device_address = vk::DeviceOrHostAddressConstKHR {
             device_address: self.indices_buffer.device_address()?,
         };
-        let transform_buffer_device_address = vk::DeviceOrHostAddressConstKHR {
+        let _transform_buffer_device_address = vk::DeviceOrHostAddressConstKHR {
             device_address: self.transform_buffer.device_address()?,
         };
 
@@ -710,7 +707,7 @@ impl Engine {
         let aligned = shaders::AlignedSpirv {
             code: raw_bytes.to_vec(),
         };
-        let mut info = vk::ShaderModuleCreateInfo::builder()
+        let info = vk::ShaderModuleCreateInfo::builder()
             .code(bytemuck::cast_slice(aligned.code.as_slice()))
             .build();
 

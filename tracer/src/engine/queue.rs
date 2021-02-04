@@ -1,11 +1,11 @@
-use std::{rc::Rc, sync::Arc};
+use std::{sync::Arc};
 
 use anyhow::Result;
 use ash::{
     version::{DeviceV1_0, DeviceV1_2},
     vk,
 };
-use log::debug;
+
 
 use super::{command_buffer::CommandBuffer, Vulkan};
 
@@ -176,7 +176,7 @@ impl Queue {
                 .map(|s| s.handle)
                 .collect::<Vec<vk::Semaphore>>();
 
-            let mut submit_info = vk::SubmitInfo::builder()
+            let submit_info = vk::SubmitInfo::builder()
                 .command_buffers(&[command_buffer.handle()])
                 .wait_semaphores(&semaphore_handles)
                 .wait_dst_stage_mask(wait_stages)
@@ -212,7 +212,7 @@ impl Queue {
         unsafe {
             let fence = Arc::new(Box::new(Fence::new(false, self.vulkan.clone())?));
 
-            let mut submit_info = vk::SubmitInfo::builder()
+            let submit_info = vk::SubmitInfo::builder()
                 .command_buffers(&[command_buffer.handle()])
                 .wait_semaphores(wait_semaphores)
                 .wait_dst_stage_mask(wait_stages)
@@ -223,7 +223,7 @@ impl Queue {
                 .device
                 .queue_submit(self.handle, &[submit_info], fence.handle)?;
             let device = self.vulkan.device.clone();
-            let handle = fence.handle;
+            let _handle = fence.handle;
             let cmd_buffer_freer = fence.clone();
             tokio::task::spawn(async move {
                 device

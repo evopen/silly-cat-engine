@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use std::{mem::ManuallyDrop, rc::Rc, sync::Arc};
+use std::{sync::Arc};
 
 use ash::{version::DeviceV1_0, vk};
 
@@ -169,7 +169,7 @@ fn cmd_set_image_layout(
 ) -> Result<()> {
     use vk::AccessFlags;
     use vk::ImageLayout;
-    use vk::PipelineStageFlags;
+    
     unsafe {
         let src_access_mask = match old_layout {
             ImageLayout::UNDEFINED => AccessFlags::default(),

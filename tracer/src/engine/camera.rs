@@ -12,6 +12,18 @@ pub struct Camera {
     up: Vec3,
     right_button_pressed: bool,
     camera_uniform: CameraUniform,
+    key_pressed: KeyPressed,
+}
+
+#[derive(Debug, Default)]
+
+struct KeyPressed {
+    w: bool,
+    s: bool,
+    a: bool,
+    d: bool,
+    q: bool,
+    e: bool,
 }
 
 enum Direction {
@@ -125,29 +137,45 @@ impl Camera {
                 winit::event::DeviceEvent::Motion { axis, value } => {}
                 winit::event::DeviceEvent::Button { button, state } => {}
                 winit::event::DeviceEvent::Key(input) => {
-                    if input.state == winit::event::ElementState::Pressed {
-                        if let Some(keycode) = input.virtual_keycode {
-                            match keycode {
-                                winit::event::VirtualKeyCode::W => {
-                                    self.process_keyboard(Direction::Forward, 0.1);
+                    if let Some(keycode) = input.virtual_keycode {
+                        match keycode {
+                            winit::event::VirtualKeyCode::W => {
+                                self.key_pressed.w = match input.state {
+                                    winit::event::ElementState::Pressed => true,
+                                    winit::event::ElementState::Released => false,
                                 }
-                                winit::event::VirtualKeyCode::S => {
-                                    self.process_keyboard(Direction::Backward, 0.1);
-                                }
-                                winit::event::VirtualKeyCode::A => {
-                                    self.process_keyboard(Direction::Left, 0.1);
-                                }
-                                winit::event::VirtualKeyCode::D => {
-                                    self.process_keyboard(Direction::Right, 0.1);
-                                }
-                                winit::event::VirtualKeyCode::Q => {
-                                    self.process_keyboard(Direction::Down, 0.1);
-                                }
-                                winit::event::VirtualKeyCode::E => {
-                                    self.process_keyboard(Direction::Up, 0.1);
-                                }
-                                _ => {}
                             }
+                            winit::event::VirtualKeyCode::S => {
+                                self.key_pressed.s = match input.state {
+                                    winit::event::ElementState::Pressed => true,
+                                    winit::event::ElementState::Released => false,
+                                }
+                            }
+                            winit::event::VirtualKeyCode::A => {
+                                self.key_pressed.a = match input.state {
+                                    winit::event::ElementState::Pressed => true,
+                                    winit::event::ElementState::Released => false,
+                                }
+                            }
+                            winit::event::VirtualKeyCode::D => {
+                                self.key_pressed.d = match input.state {
+                                    winit::event::ElementState::Pressed => true,
+                                    winit::event::ElementState::Released => false,
+                                }
+                            }
+                            winit::event::VirtualKeyCode::Q => {
+                                self.key_pressed.q = match input.state {
+                                    winit::event::ElementState::Pressed => true,
+                                    winit::event::ElementState::Released => false,
+                                }
+                            }
+                            winit::event::VirtualKeyCode::E => {
+                                self.key_pressed.e = match input.state {
+                                    winit::event::ElementState::Pressed => true,
+                                    winit::event::ElementState::Released => false,
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -159,6 +187,28 @@ impl Camera {
             winit::event::Event::RedrawEventsCleared => {}
             winit::event::Event::LoopDestroyed => {}
             _ => {}
+        }
+        self.update();
+    }
+
+    fn update(&mut self) {
+        if self.key_pressed.w {
+            self.process_keyboard(Direction::Forward, 0.1);
+        }
+        if self.key_pressed.s {
+            self.process_keyboard(Direction::Backward, 0.1);
+        }
+        if self.key_pressed.a {
+            self.process_keyboard(Direction::Left, 0.1);
+        }
+        if self.key_pressed.d {
+            self.process_keyboard(Direction::Right, 0.1);
+        }
+        if self.key_pressed.q {
+            self.process_keyboard(Direction::Down, 0.1);
+        }
+        if self.key_pressed.e {
+            self.process_keyboard(Direction::Up, 0.1);
         }
     }
 

@@ -7,15 +7,13 @@ use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 
-use self::shaders::Shaders;
+use shaders::Shaders;
 
-use super::buffer::Buffer;
-use super::pipeline::GraphicsPipeline;
 use super::resource::{
-    DescriptorSetLayout, GraphicsPipeline, PipelineLayout, Sampler, ShaderStage,
+    DescriptorPool, DescriptorSetLayout, GraphicsPipeline, PipelineLayout, Sampler, ShaderStage,
 };
-use super::shader::ShaderModule;
 use super::Vulkan;
+use super::{buffer::Buffer, resource::ShaderModule};
 
 use anyhow::Result;
 
@@ -58,8 +56,9 @@ pub struct RenderPass {
     index_buffers: Vec<Buffer>,
     vertex_buffers: Vec<Buffer>,
     uniform_buffer: Buffer,
+    descriptor_pool: DescriptorPool,
     uniform_bind_group: wgpu::BindGroup,
-    texture_bind_group_layout: wgpu::BindGroupLayout,
+    texture_descriptor_set_layout: DescriptorSetLayout,
     texture_bind_group: Option<wgpu::BindGroup>,
     texture_version: Option<u64>,
     next_user_texture_id: u64,
@@ -178,13 +177,23 @@ impl RenderPass {
                 .build(),
         )?;
 
+        let descriptor_pool = DescriptorPool::new(
+            vulkan.clone(),
+            &[vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(1)
+                .build()],
+            1,
+        )?;
+
         Ok(Self {
             graphics_pipeline,
             vertex_buffers: Vec::with_capacity(64),
             index_buffers: Vec::with_capacity(64),
             uniform_buffer,
+            descriptor_pool,
             uniform_bind_group,
-            texture_bind_group_layout,
+            texture_descriptor_set_layout,
             texture_version: None,
             texture_bind_group: None,
             next_user_texture_id: 0,

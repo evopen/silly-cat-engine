@@ -109,7 +109,7 @@ impl GraphicsPipeline {
     ) -> Result<Self> {
         let shader_stages = stages
             .iter()
-            .map(|stage| stage.shader_stage_create_info())
+            .map(|stage| stage.shader_stage_create_info().clone())
             .collect::<Vec<_>>();
         let info = vk::GraphicsPipelineCreateInfo::builder()
             .layout(pipeline_layout.handle)
@@ -211,9 +211,13 @@ pub struct DescriptorSet {
 }
 
 impl DescriptorSet {
-    pub fn new(vulkan: Arc<Vulkan>, descriptor_pool: vk::DescriptorPool) -> Result<Self> {
+    pub fn new(
+        vulkan: Arc<Vulkan>,
+        descriptor_pool: &DescriptorPool,
+        descriptor_set_layout: &DescriptorSetLayout,
+    ) -> Result<Self> {
         let info = vk::DescriptorSetAllocateInfo::builder()
-            .set_layouts()
+            .set_layouts(&[descriptor_set_layout.handle])
             .build();
         unsafe {
             let handle = vulkan.device.allocate_descriptor_sets(&info)?;
@@ -239,10 +243,11 @@ impl DescriptorPool {
     pub fn new(
         vulkan: Arc<Vulkan>,
         descriptor_pool_size: &[vk::DescriptorPoolSize],
+        max_sets: u32,
     ) -> Result<Self> {
         let info = vk::DescriptorPoolCreateInfo::builder()
             .pool_sizes(descriptor_pool_size)
-            .max_sets(1)
+            .max_sets(max_sets)
             .build();
         unsafe {
             let handle = vulkan.device.create_descriptor_pool(&info, None)?;

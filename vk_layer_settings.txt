@@ -1,0 +1,21 @@
+
+# VK_LAYER_LUNARG_gfxreconstruct
+lunarg_gfxreconstruct.capture_trigger = 
+lunarg_gfxreconstruct.capture_frames = 
+lunarg_gfxreconstruct.capture_file = 
+lunarg_gfxreconstruct.capture_file_timestamp = FALSE
+lunarg_gfxreconstruct.capture_file_flush = FALSE
+lunarg_gfxreconstruct.capture_compression_type = LZ4
+lunarg_gfxreconstruct.log_output_to_console = FALSE
+lunarg_gfxreconstruct.log_break_on_error = FALSE
+lunarg_gfxreconstruct.log_output_to_os_debug_string = FALSE
+lunarg_gfxreconstruct.log_file = 
+lunarg_gfxreconstruct.log_detailed = FALSE
+lunarg_gfxreconstruct.log_file_flush_after_write = FALSE
+lunarg_gfxreconstruct.log_file_keep_open = FALSE
+lunarg_gfxreconstruct.log_file_create_new = FALSE
+lunarg_gfxreconstruct.log_level = debug
+lunarg_gfxreconstruct.memory_tracking_mode = page_guard
+lunarg_gfxreconstruct.page_guard_copy_on_map = TRUE
+lunarg_gfxreconstruct.page_guard_separate_read = TRUE
+lunarg_gfxreconstruct.page_guard_external_memory = FALSE

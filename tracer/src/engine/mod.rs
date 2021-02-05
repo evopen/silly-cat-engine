@@ -4,14 +4,19 @@ mod camera;
 mod command_buffer;
 mod image;
 mod model;
+mod pipeline;
 mod queue;
+mod resource;
+mod shader_module;
 mod shaders;
 mod swapchain;
+mod ui_backend;
 
 use acceleration_structure::AccelerationStructure;
 use buffer::Buffer;
 use camera::Camera;
 use command_buffer::CommandBuffer;
+use egui_winit_platform::PlatformDescriptor;
 use glam::Vec3A as Vec3;
 use image::Image;
 
@@ -133,6 +138,8 @@ pub struct Engine {
     queue: Queue,
     camera: Camera,
     uniform_buffer: Buffer,
+    ui_instance: egui_winit_platform::Platform,
+    ui_render_pass: vk::RenderPass,
 }
 
 impl Engine {
@@ -399,6 +406,17 @@ impl Engine {
                 vulkan.clone(),
             )?;
 
+            let ui_instance = egui_winit_platform::Platform::new(PlatformDescriptor {
+                physical_width: size.width,
+                physical_height: size.height,
+                scale_factor: window.scale_factor(),
+                font_definitions: egui::FontDefinitions::default(),
+                style: Default::default(),
+            });
+
+            let ui_render_pass =
+                device.create_render_pass(&vk::RenderPassCreateInfo::builder()..build(), None)?;
+
             Ok(Self {
                 ray_tracing_pipeline_properties,
                 size,
@@ -428,6 +446,7 @@ impl Engine {
                 model,
                 camera,
                 uniform_buffer,
+                ui_instance,
             })
         }
     }

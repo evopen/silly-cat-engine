@@ -33,7 +33,13 @@ impl ShaderData {
             .context("File have no stem")?
             .to_str()
             .context("invalid str")?;
-        let spv_path = PathBuf::from("../target/spirv")
+
+        let spv_folder = src_path.parent().unwrap().join("bin");
+        dbg!(&spv_folder);
+        if !spv_folder.exists() {
+            std::fs::create_dir(&spv_folder)?;
+        }
+        let spv_path = spv_folder
             .join(shader_name)
             .with_extension(format!("{}.spv", extension));
 
@@ -56,13 +62,6 @@ fn main() -> Result<()> {
         glob("./src/**/*.rchit")?,
         glob("./src/**/*.rmiss")?,
     ];
-
-    let output_path = PathBuf::from("../target/spirv");
-    dbg!(&output_path);
-    if !output_path.exists() {
-        println!("here");
-        std::fs::create_dir(output_path)?;
-    }
 
     // This could be parallelized
     let shaders = shader_paths

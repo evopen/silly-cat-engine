@@ -439,6 +439,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_winit_platform"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6802c10732ce81479f5308bc89eaae7ee68f2eb43af1771d763892d24bbe7ab"
+dependencies = [
+ "egui",
+ "winit",
+]
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -460,6 +470,15 @@ dependencies = [
  "atomic_refcell",
  "emath",
  "rusttype",
+]
+
+[[package]]
+name = "epi"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e358eaf8b9898aa366bed1c0645dd439f272341e5cd1404c8a6a604e544ee065"
+dependencies = [
+ "egui",
 ]
 
 [[package]]
@@ -1523,7 +1542,8 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "chrono",
- "egui",
+ "egui_winit_platform",
+ "epi",
  "fern",
  "futures",
  "glam",

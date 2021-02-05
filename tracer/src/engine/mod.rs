@@ -381,7 +381,10 @@ impl Engine {
                     .build(),
             );
 
-            let model = Model::new(&gltf::Gltf::open("tracer/models/Box.glb")?, vulkan.clone())?;
+            let model = Model::new(
+                &gltf::Gltf::open("models/2.0/Box/glTF-Binary/Box.glb")?,
+                vulkan.clone(),
+            )?;
 
             let camera = Camera::new(Vec3::new(0.0, 0.0, 2.0), Vec3::new(0.0, 0.0, 0.0));
 

@@ -1322,6 +1322,11 @@ checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
 [[package]]
 name = "safe-vk"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ash",
+ "ash-window",
+]
 
 [[package]]
 name = "same-file"
@@ -1784,3 +1789,6 @@ checksum = "b07db065a5cf61a7e4ba64f29e67db906fb1787316516c4e6e5ff0fea1efcd8a"
 [[package]]
 name = "xtask"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+]

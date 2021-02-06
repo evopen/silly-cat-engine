@@ -6,6 +6,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
+      - name: "install gtk"
+        run: sudo apt-get install libgtk-3-dev
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
         with:

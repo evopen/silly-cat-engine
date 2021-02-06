@@ -1567,6 +1567,7 @@ checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
 [[package]]
 name = "vk-mem"
 version = "0.2.3"
+source = "git+https://github.com/evopen/vk-mem-rs.git?branch=master#7150e97781b8c16306af8c887e5ac9c5a5a5ad43"
 dependencies = [
  "ash",
  "bitflags",
@@ -1779,3 +1780,7 @@ name = "xml-rs"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b07db065a5cf61a7e4ba64f29e67db906fb1787316516c4e6e5ff0fea1efcd8a"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"

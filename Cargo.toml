@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "tracer",
-    "safe-vk"
+    "safe-vk",
+    "xtask"
 ]
 
 

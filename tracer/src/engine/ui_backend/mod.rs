@@ -1,16 +1,21 @@
 mod shaders;
 
+use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
-pub use epi;
-pub use epi::egui;
+use epi::egui;
+use std::rc::Rc;
 use std::sync::Arc;
+use vk_mem::MemoryUsage;
 
 use bytemuck::{Pod, Zeroable};
 
 use shaders::Shaders;
 
+use super::command_buffer::CommandBuffer;
+use super::image::Image;
 use super::resource::{
-    DescriptorPool, DescriptorSetLayout, GraphicsPipeline, PipelineLayout, Sampler, ShaderStage,
+    self, DescriptorPool, DescriptorSet, DescriptorSetLayout, GraphicsPipeline, PipelineLayout,
+    Sampler, ShaderStage,
 };
 use super::Vulkan;
 use super::{buffer::Buffer, resource::ShaderModule};
@@ -56,21 +61,23 @@ pub struct RenderPass {
     index_buffers: Vec<Buffer>,
     vertex_buffers: Vec<Buffer>,
     uniform_buffer: Buffer,
-    descriptor_pool: DescriptorPool,
-    uniform_bind_group: wgpu::BindGroup,
+    descriptor_pool: Rc<DescriptorPool>,
+    uniform_descriptor_set: DescriptorSet,
     texture_descriptor_set_layout: DescriptorSetLayout,
-    texture_bind_group: Option<wgpu::BindGroup>,
+    texture_descriptor_set: Option<DescriptorSet>,
     texture_version: Option<u64>,
     next_user_texture_id: u64,
     pending_user_textures: Vec<(u64, egui::Texture)>,
-    user_textures: Vec<Option<wgpu::BindGroup>>,
+    user_textures: Vec<Option<DescriptorSet>>,
+    vulkan: Arc<Vulkan>,
+    render_pass: resource::RenderPass,
 }
 
 impl RenderPass {
     /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(vulkan: Arc<Vulkan>) -> Result<Self> {
-        let vs_module = ShaderModule::new(vulkan, Shaders::get("egui.vert.spv"))?;
-        let fs_module = ShaderModule::new(vulkan, Shaders::get("egui.frag.spv"))?;
+        let vs_module = ShaderModule::new(vulkan, Shaders::get("egui.vert.spv").unwrap())?;
+        let fs_module = ShaderModule::new(vulkan, Shaders::get("egui.frag.spv").unwrap())?;
 
         let uniform_buffer = Buffer::new(
             std::mem::size_of::<UniformBuffer>(),
@@ -119,7 +126,7 @@ impl RenderPass {
 
         let graphics_pipeline = GraphicsPipeline::new(
             vulkan.clone(),
-            &pipeline_layout,
+            pipeline_layout,
             &[
                 &ShaderStage::new(vs_module, vk::ShaderStageFlags::VERTEX, "main"),
                 &ShaderStage::new(fs_module, vk::ShaderStageFlags::FRAGMENT, "main"),
@@ -177,14 +184,34 @@ impl RenderPass {
                 .build(),
         )?;
 
-        let descriptor_pool = DescriptorPool::new(
+        let descriptor_pool = Rc::new(DescriptorPool::new(
             vulkan.clone(),
             &[vk::DescriptorPoolSize::builder()
                 .ty(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(1)
                 .build()],
             1,
+        )?);
+
+        let uniform_descriptor_set = DescriptorSet::new(
+            vulkan.clone(),
+            descriptor_pool.clone(),
+            &uniform_descriptor_set_layout,
         )?;
+
+        let render_pass = resource::RenderPass::new(
+            vulkan.clone(),
+            &vk::RenderPassCreateInfo::builder()
+                .attachments(&[vk::AttachmentDescription::builder()
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .load_op(vk::AttachmentLoadOp::LOAD)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                    .build()])
+                .build(),
+        );
 
         Ok(Self {
             graphics_pipeline,
@@ -192,105 +219,154 @@ impl RenderPass {
             index_buffers: Vec::with_capacity(64),
             uniform_buffer,
             descriptor_pool,
-            uniform_bind_group,
+            uniform_descriptor_set,
             texture_descriptor_set_layout,
             texture_version: None,
-            texture_bind_group: None,
+            texture_descriptor_set: None,
             next_user_texture_id: 0,
             pending_user_textures: Vec::new(),
             user_textures: Vec::new(),
+            vulkan,
+            render_pass,
         })
     }
 
     /// Executes the egui render pass. When `clear_on_draw` is set, the output target will get cleared before writing to it.
     pub fn execute(
         &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        color_attachment: &wgpu::TextureView,
+        command_buffer: &mut CommandBuffer,
+        color_attachment: &Image,
         paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
-        clear_color: Option<wgpu::Color>,
     ) {
-        let load_operation = if let Some(color) = clear_color {
-            wgpu::LoadOp::Clear(color)
-        } else {
-            wgpu::LoadOp::Load
-        };
-
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                attachment: color_attachment,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: load_operation,
-                    store: true,
-                },
-            }],
-            depth_stencil_attachment: None,
-            label: Some("egui main render pass"),
-        });
-        pass.push_debug_group("egui_pass");
-        pass.set_pipeline(&self.render_pipeline);
-
-        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        let image_view = color_attachment.view();
+        let framebuffer = resource::Framebuffer::new(
+            self.vulkan.clone(),
+            &vk::FramebufferCreateInfo::builder()
+                .attachments(&[image_view])
+                .render_pass(self.render_pass.handle())
+                .layers(1)
+                .width(screen_descriptor.physical_width)
+                .height(screen_descriptor.physical_height)
+                .build(),
+        );
 
         let scale_factor = screen_descriptor.scale_factor;
         let physical_width = screen_descriptor.physical_width;
         let physical_height = screen_descriptor.physical_height;
 
-        for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
-            .iter()
-            .zip(self.vertex_buffers.iter())
-            .zip(self.index_buffers.iter())
-        {
-            // Transform clip rect to physical pixels.
-            let clip_min_x = scale_factor * clip_rect.min.x;
-            let clip_min_y = scale_factor * clip_rect.min.y;
-            let clip_max_x = scale_factor * clip_rect.max.x;
-            let clip_max_y = scale_factor * clip_rect.max.y;
+        let vulkan = self.vulkan.clone();
+        let commands = |handle: vk::CommandBuffer| unsafe {
+            vulkan.device.cmd_begin_render_pass(
+                handle,
+                &vk::RenderPassBeginInfo::builder()
+                    .render_pass(self.render_pass.handle())
+                    .framebuffer(framebuffer.handle())
+                    .render_area(
+                        vk::Rect2D::builder()
+                            .extent(vk::Extent2D {
+                                width: physical_height,
+                                height: physical_height,
+                            })
+                            .build(),
+                    )
+                    .build(),
+                vk::SubpassContents::INLINE,
+            );
+            vulkan.device.cmd_bind_pipeline(
+                handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.graphics_pipeline.handle(),
+            );
+            vulkan.device.cmd_bind_descriptor_sets(
+                handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.graphics_pipeline.layout().handle(),
+                0,
+                &[self.uniform_descriptor_set.handle()],
+                &[0],
+            );
 
-            // Make sure clip rect can fit within an `u32`.
-            let clip_min_x = egui::clamp(clip_min_x, 0.0..=physical_width as f32);
-            let clip_min_y = egui::clamp(clip_min_y, 0.0..=physical_height as f32);
-            let clip_max_x = egui::clamp(clip_max_x, clip_min_x..=physical_width as f32);
-            let clip_max_y = egui::clamp(clip_max_y, clip_min_y..=physical_height as f32);
-
-            let clip_min_x = clip_min_x.round() as u32;
-            let clip_min_y = clip_min_y.round() as u32;
-            let clip_max_x = clip_max_x.round() as u32;
-            let clip_max_y = clip_max_y.round() as u32;
-
-            let width = (clip_max_x - clip_min_x).max(1);
-            let height = (clip_max_y - clip_min_y).max(1);
-
+            for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
+                .iter()
+                .zip(self.vertex_buffers.iter())
+                .zip(self.index_buffers.iter())
             {
-                // clip scissor rectangle to target size
-                let x = clip_min_x.min(physical_width);
-                let y = clip_min_y.min(physical_height);
-                let width = width.min(physical_width - x);
-                let height = height.min(physical_height - y);
+                // Transform clip rect to physical pixels.
+                let clip_min_x = scale_factor * clip_rect.min.x;
+                let clip_min_y = scale_factor * clip_rect.min.y;
+                let clip_max_x = scale_factor * clip_rect.max.x;
+                let clip_max_y = scale_factor * clip_rect.max.y;
 
-                // skip rendering with zero-sized clip areas
-                if width == 0 || height == 0 {
-                    continue;
+                // Make sure clip rect can fit within an `u32`.
+                let clip_min_x = egui::clamp(clip_min_x, 0.0..=physical_width as f32);
+                let clip_min_y = egui::clamp(clip_min_y, 0.0..=physical_height as f32);
+                let clip_max_x = egui::clamp(clip_max_x, clip_min_x..=physical_width as f32);
+                let clip_max_y = egui::clamp(clip_max_y, clip_min_y..=physical_height as f32);
+
+                let clip_min_x = clip_min_x.round() as u32;
+                let clip_min_y = clip_min_y.round() as u32;
+                let clip_max_x = clip_max_x.round() as u32;
+                let clip_max_y = clip_max_y.round() as u32;
+
+                let width = (clip_max_x - clip_min_x).max(1);
+                let height = (clip_max_y - clip_min_y).max(1);
+
+                {
+                    // clip scissor rectangle to target size
+                    let x = clip_min_x.min(physical_width);
+                    let y = clip_min_y.min(physical_height);
+                    let width = width.min(physical_width - x);
+                    let height = height.min(physical_height - y);
+
+                    // skip rendering with zero-sized clip areas
+                    if width == 0 || height == 0 {
+                        continue;
+                    }
+
+                    vulkan.device.cmd_set_scissor(
+                        handle,
+                        1,
+                        &[vk::Rect2D {
+                            offset: vk::Offset2D {
+                                x: x as i32,
+                                y: y as i32,
+                            },
+                            extent: vk::Extent2D { width, height },
+                        }],
+                    );
                 }
 
-                pass.set_scissor_rect(x, y, width, height);
+                vulkan.device.cmd_bind_descriptor_sets(
+                    handle,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.graphics_pipeline.layout().handle(),
+                    1,
+                    &[self.get_texture_bind_group(triangles.texture_id).handle()],
+                    &[0],
+                );
+                vulkan.device.cmd_bind_index_buffer(
+                    handle,
+                    index_buffer.handle,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                vulkan
+                    .device
+                    .cmd_bind_vertex_buffers(handle, 0, &[vertex_buffer.handle], &[0]);
+
+                vulkan
+                    .device
+                    .cmd_draw_indexed(handle, triangles.indices.len() as u32, 1, 0, 0, 0);
             }
-            pass.set_bind_group(1, self.get_texture_bind_group(triangles.texture_id), &[]);
-
-            pass.set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
-            pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-            pass.draw_indexed(0..triangles.indices.len() as u32, 0, 0..1);
-        }
-
-        pass.pop_debug_group();
+            vulkan.device.cmd_end_render_pass(handle);
+        };
     }
 
-    fn get_texture_bind_group(&self, texture_id: egui::TextureId) -> &wgpu::BindGroup {
+    fn get_texture_bind_group(&self, texture_id: egui::TextureId) -> &DescriptorSet {
         match texture_id {
             egui::TextureId::Egui => self
-                .texture_bind_group
+                .texture_descriptor_set
                 .as_ref()
                 .expect("egui texture was not set before the first draw"),
             egui::TextureId::User(id) => {
@@ -306,12 +382,7 @@ impl RenderPass {
     }
 
     /// Updates the texture used by egui for the fonts etc. Should be called before `execute()`.
-    pub fn update_texture(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        egui_texture: &egui::Texture,
-    ) {
+    pub fn update_texture(&mut self, queue: &wgpu::Queue, egui_texture: &egui::Texture) {
         // Don't update the texture if it hasn't changed.
         if self.texture_version == Some(egui_texture.version) {
             return;
@@ -327,10 +398,10 @@ impl RenderPass {
                 .flat_map(|p| std::iter::repeat(*p).take(4))
                 .collect(),
         };
-        let bind_group = self.egui_texture_to_wgpu(device, queue, &egui_texture, "egui");
+        let descriptor_set = self.egui_texture_to_wgpu(queue, &egui_texture, "egui");
 
         self.texture_version = Some(egui_texture.version);
-        self.texture_bind_group = Some(bind_group);
+        self.texture_descriptor_set = Some(descriptor_set);
     }
 
     /// Updates the user textures that the app allocated. Should be called before `execute()`.
@@ -349,26 +420,19 @@ impl RenderPass {
 
     fn egui_texture_to_wgpu(
         &self,
-        device: &wgpu::Device,
         queue: &wgpu::Queue,
         egui_texture: &egui::Texture,
         label: &str,
-    ) -> wgpu::BindGroup {
-        let size = wgpu::Extent3d {
-            width: egui_texture.width as u32,
-            height: egui_texture.height as u32,
-            depth: 1,
-        };
-
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(format!("{}_texture", label).as_str()),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
-        });
+    ) -> DescriptorSet {
+        let texture = Image::new(
+            egui_texture.width as u32,
+            egui_texture.height as u32,
+            vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+            vk_mem::MemoryUsage::CpuToGpu,
+            vk::ImageLayout::UNDEFINED,
+            self.vulkan.clone(),
+        )
+        .unwrap();
 
         queue.write_texture(
             wgpu::TextureCopyView {
@@ -402,7 +466,6 @@ impl RenderPass {
     /// Uploads the uniform, vertex and index data used by the render pass. Should be called before `execute()`.
     pub fn update_buffers(
         &mut self,
-        device: &wgpu::Device,
         queue: &wgpu::Queue,
         paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
@@ -457,41 +520,36 @@ impl RenderPass {
     }
 
     /// Updates the buffers used by egui. Will properly re-size the buffers if needed.
-    fn update_buffer(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        buffer_type: BufferType,
-        index: usize,
-        data: &[u8],
-    ) {
+    fn update_buffer(&mut self, buffer_type: BufferType, index: usize, data: &[u8]) {
         let (buffer, storage, name) = match buffer_type {
             BufferType::Index => (
                 &mut self.index_buffers[index],
-                wgpu::BufferUsage::INDEX,
+                vk::BufferUsageFlags::INDEX_BUFFER,
                 "index",
             ),
             BufferType::Vertex => (
                 &mut self.vertex_buffers[index],
-                wgpu::BufferUsage::VERTEX,
+                vk::BufferUsageFlags::VERTEX_BUFFER,
                 "vertex",
             ),
             BufferType::Uniform => (
                 &mut self.uniform_buffer,
-                wgpu::BufferUsage::UNIFORM,
+                vk::BufferUsageFlags::UNIFORM_BUFFER,
                 "uniform",
             ),
         };
 
-        if data.len() > buffer.size {
-            buffer.size = data.len();
-            buffer.buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(format!("egui_{}_buffer", name).as_str()),
-                contents: bytemuck::cast_slice(data),
-                usage: storage | wgpu::BufferUsage::COPY_DST,
-            });
+        if data.len() > buffer.size() {
+            // TODO: unimpl
+            // buffer.size = data.len();
+            // buffer.buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //     label: Some(format!("egui_{}_buffer", name).as_str()),
+            //     contents: bytemuck::cast_slice(data),
+            //     usage: storage | vk::BufferUsageFlags::TRANSFER_DST,
+            // });
+            unimplemented!();
         } else {
-            queue.write_buffer(&buffer.buffer, 0, data);
+            buffer.copy_from(data.as_ptr());
         }
     }
 }

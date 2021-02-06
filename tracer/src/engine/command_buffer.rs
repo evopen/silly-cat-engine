@@ -5,6 +5,7 @@ pub struct CommandBuffer {
     handle: vk::CommandBuffer,
     device: ash::Device,
     pool: vk::CommandPool,
+    began: bool,
 }
 
 impl CommandBuffer {
@@ -27,6 +28,7 @@ impl CommandBuffer {
                 handle,
                 device,
                 pool,
+                began: false,
             })
         }
     }
@@ -48,10 +50,12 @@ impl CommandBuffer {
         }
     }
 
-    pub fn begin(&self) -> Result<()> {
+    // TODO: get rid of these VkResult, wrap them
+    pub fn begin(&mut self) -> Result<()> {
         unsafe {
             self.device
                 .begin_command_buffer(self.handle, &vk::CommandBufferBeginInfo::default())?;
+            self.began = true;
             Ok(())
         }
     }
@@ -59,8 +63,13 @@ impl CommandBuffer {
     pub fn end(&self) -> Result<()> {
         unsafe {
             self.device.end_command_buffer(self.handle)?;
+            self.began = false;
             Ok(())
         }
+    }
+
+    pub fn is_began(&self) -> bool {
+        self.began
     }
 }
 

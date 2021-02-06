@@ -1,9 +1,10 @@
 use super::shader::ShaderStage;
 use super::Vulkan;
 use anyhow::Result;
-use ash::version::DeviceV1_0;
+use ash::version::{DeviceV1_0, DeviceV1_2};
 use ash::vk;
 use std::ffi::{CStr, CString};
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct Sampler {
@@ -78,6 +79,10 @@ impl PipelineLayout {
             Ok(Self { handle, vulkan })
         }
     }
+
+    pub fn handle(&self) -> vk::PipelineLayout {
+        self.handle
+    }
 }
 
 impl Drop for PipelineLayout {
@@ -92,13 +97,14 @@ impl Drop for PipelineLayout {
 
 pub struct GraphicsPipeline {
     handle: vk::Pipeline,
+    layout: PipelineLayout,
     vulkan: Arc<Vulkan>,
 }
 
 impl GraphicsPipeline {
     pub fn new(
         vulkan: Arc<Vulkan>,
-        pipeline_layout: &PipelineLayout,
+        layout: PipelineLayout,
         stages: &[&ShaderStage],
         vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
         input_assembly_state: &vk::PipelineInputAssemblyStateCreateInfo,
@@ -112,7 +118,7 @@ impl GraphicsPipeline {
             .map(|stage| stage.shader_stage_create_info().clone())
             .collect::<Vec<_>>();
         let info = vk::GraphicsPipelineCreateInfo::builder()
-            .layout(pipeline_layout.handle)
+            .layout(layout.handle)
             .stages(shader_stages.as_slice())
             .vertex_input_state(vertex_input_state)
             .input_assembly_state(input_assembly_state)
@@ -129,8 +135,20 @@ impl GraphicsPipeline {
                 .first()
                 .unwrap()
                 .to_owned();
-            Ok(Self { handle, vulkan })
+            Ok(Self {
+                handle,
+                vulkan,
+                layout,
+            })
         }
+    }
+
+    pub fn handle(&self) -> vk::Pipeline {
+        self.handle
+    }
+
+    pub fn layout(&self) -> &PipelineLayout {
+        &self.layout
     }
 }
 
@@ -208,28 +226,45 @@ impl ShaderStage {
 pub struct DescriptorSet {
     handle: vk::DescriptorSet,
     vulkan: Arc<Vulkan>,
+    descriptor_pool: Rc<DescriptorPool>,
 }
 
 impl DescriptorSet {
     pub fn new(
         vulkan: Arc<Vulkan>,
-        descriptor_pool: &DescriptorPool,
+        descriptor_pool: Rc<DescriptorPool>,
         descriptor_set_layout: &DescriptorSetLayout,
     ) -> Result<Self> {
         let info = vk::DescriptorSetAllocateInfo::builder()
             .set_layouts(&[descriptor_set_layout.handle])
+            .descriptor_pool(descriptor_pool.handle)
             .build();
         unsafe {
-            let handle = vulkan.device.allocate_descriptor_sets(&info)?;
-            Ok(Self { handle, vulkan })
+            let handle = vulkan
+                .device
+                .allocate_descriptor_sets(&info)?
+                .first()
+                .unwrap()
+                .to_owned();
+            Ok(Self {
+                handle,
+                vulkan,
+                descriptor_pool,
+            })
         }
+    }
+
+    pub fn handle(&self) -> vk::DescriptorSet {
+        self.handle
     }
 }
 
 impl Drop for DescriptorSet {
     fn drop(&mut self) {
         unsafe {
-            self.vulkan.device.free_descriptor_sets(self.handle, None);
+            self.vulkan
+                .device
+                .free_descriptor_sets(self.descriptor_pool.handle, &[self.handle]);
         }
     }
 }
@@ -262,6 +297,58 @@ impl Drop for DescriptorPool {
             self.vulkan
                 .device
                 .destroy_descriptor_pool(self.handle, None);
+        }
+    }
+}
+
+pub struct RenderPass {
+    handle: vk::RenderPass,
+    vulkan: Arc<Vulkan>,
+}
+
+impl RenderPass {
+    pub fn new(vulkan: Arc<Vulkan>, info: &vk::RenderPassCreateInfo) -> Self {
+        unsafe {
+            let handle = vulkan.device.create_render_pass(&info, None).unwrap();
+            Self { handle, vulkan }
+        }
+    }
+
+    pub fn handle(&self) -> vk::RenderPass {
+        self.handle
+    }
+}
+
+impl Drop for RenderPass {
+    fn drop(&mut self) {
+        unsafe {
+            self.vulkan.device.destroy_render_pass(self.handle, None);
+        }
+    }
+}
+
+pub struct Framebuffer {
+    handle: vk::Framebuffer,
+    vulkan: Arc<Vulkan>,
+}
+
+impl Framebuffer {
+    pub fn new(vulkan: Arc<Vulkan>, info: &vk::FramebufferCreateInfo) -> Self {
+        unsafe {
+            let handle = vulkan.device.create_framebuffer(&info, None).unwrap();
+            Self { handle, vulkan }
+        }
+    }
+
+    pub fn handle(&self) -> vk::Framebuffer {
+        self.handle
+    }
+}
+
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.vulkan.device.destroy_framebuffer(self.handle, None);
         }
     }
 }

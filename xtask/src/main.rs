@@ -1,13 +1,15 @@
 fn main() {
-    std::fs::read_dir("target/debug/deps")
-        .unwrap()
-        .map(|p| p.unwrap().path())
-        .filter(|p| p.extension().is_some())
-        .filter(|p| {
-            let ext = p.extension().unwrap().to_str().unwrap();
-            ext.eq("gcda") || ext.eq("gcno")
-        })
-        .for_each(|p| std::fs::remove_file(p).unwrap());
+    // clean up old coverage data
+    if let Ok(s) = std::fs::read_dir("target/debug/deps") {
+        s.map(|p| p.unwrap().path())
+            .filter(|p| p.extension().is_some())
+            .filter(|p| {
+                let ext = p.extension().unwrap().to_str().unwrap();
+                ext.eq("gcda") || ext.eq("gcno")
+            })
+            .for_each(|p| std::fs::remove_file(p).unwrap());
+    }
+
     let output = std::process::Command::new("cargo")
         .arg("build")
         .args(&["--package", "safe-vk"])

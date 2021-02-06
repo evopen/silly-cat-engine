@@ -5,12 +5,11 @@ use ash::vk;
 
 pub struct Instance {
     handle: ash::Entry,
-    instance: Option<Device>,
 }
 
 impl Instance {
     pub fn new() -> Result<Self> {
-        let handle = ash::Entry::new()?;
+        let handle = ash::Instance::new()?;
 
         let result = Self { handle };
 
@@ -35,7 +34,7 @@ impl Instance {
 
 #[cfg(test)]
 mod tests {
-    use super::Entry;
+    use super::Instance;
 
     #[test]
     fn test_entry() {

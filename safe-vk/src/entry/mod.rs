@@ -1,8 +1,12 @@
 mod instance;
+use ash::version::EntryV1_0;
 use instance::Instance;
 
 use anyhow::Result;
 use ash::vk;
+
+use std::ffi::CString;
+use std::sync::Arc;
 
 pub struct Entry {
     handle: ash::Entry,
@@ -36,7 +40,47 @@ impl Entry {
         version_str
     }
 
-    pub fn create_instance(&mut self) {}
+    pub fn create_instance(
+        &mut self,
+        layer_names: &[&str],
+        extension_names: &[&str],
+    ) -> Arc<Instance> {
+        let app_name = CString::new(env!("CARGO_PKG_NAME")).unwrap();
+        let engine_name = CString::new("Silly Cat Engine").unwrap();
+
+        let appinfo = vk::ApplicationInfo::builder()
+            .application_name(&app_name)
+            .application_version(0)
+            .engine_name(&engine_name)
+            .engine_version(0)
+            .api_version(vk::make_version(1, 2, 0));
+
+        let layer_names = layer_names
+            .iter()
+            .map(|s| CString::new(*s).unwrap())
+            .collect::<Vec<_>>();
+        let layers_names_raw: Vec<*const i8> = layer_names
+            .iter()
+            .map(|raw_name| raw_name.as_ptr())
+            .collect();
+
+        let extension_names = extension_names
+            .iter()
+            .map(|s| CString::new(*s).unwrap())
+            .collect::<Vec<_>>();
+        let mut extension_names_raw = extension_names
+            .iter()
+            .map(|ext| ext.as_ptr())
+            .collect::<Vec<_>>();
+
+        let create_info = vk::InstanceCreateInfo::builder()
+            .application_info(&appinfo)
+            .enabled_layer_names(&layers_names_raw)
+            .enabled_extension_names(&extension_names_raw);
+
+        self.instance =
+            Some(unsafe { self.handle.create_instance(vk::Instancecreateinfo).unwrap() });
+    }
 }
 
 #[cfg(test)]

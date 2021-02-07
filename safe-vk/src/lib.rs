@@ -404,10 +404,33 @@ impl Buffer {
         }
     }
 
+    pub fn new_init<I: AsRef<[u8]>>(
+        allocator: Arc<Allocator>,
+        buffer_usage: vk::BufferUsageFlags,
+        memory_usage: vk_mem::MemoryUsage,
+        data: I,
+    ) {
+        let data = data.as_ref();
+        let buffer = Self::new(
+            allocator.clone(),
+            data.len(),
+            buffer_usage | vk::BufferUsageFlags::TRANSFER_DST,
+            memory_usage,
+        );
+        if buffer.is_device_local() {
+            let staging_buffer = Self::new(
+                allocator.clone(),
+                data.len(),
+                vk::BufferUsageFlags::TRANSFER_SRC,
+                vk_mem::MemoryUsage::CpuToGpu,
+            );
+            staging_buffer.copy_from(data);
+            // TODO: copy to buffer
+        }
+    }
+
     pub fn map(&mut self) -> *mut u8 {
-        if self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw()
-            != 0
-        {
+        if self.is_device_local() {
             panic!("cannot map device local memory");
         }
         self.mapped = true;
@@ -415,8 +438,10 @@ impl Buffer {
     }
 
     pub fn unmap(&mut self) {
-        self.mapped = false;
-        self.allocator.handle.unmap_memory(&self.allocation)
+        if self.mapped {
+            self.allocator.handle.unmap_memory(&self.allocation);
+            self.mapped = false;
+        }
     }
 
     pub fn memory_type(&self) -> u32 {
@@ -427,16 +452,24 @@ impl Buffer {
         self.device_address
     }
 
-    pub fn copy_from(&self, ptr: *const u8) {
+    pub fn copy_from<I: AsRef<[u8]>>(&self, data: I) {
+        let data = data.as_ref();
+        if data.len() != self.size() {
+            panic!("unequal size");
+        }
         let mapped = self.allocator.handle.map_memory(&self.allocation).unwrap();
         unsafe {
-            std::ptr::copy_nonoverlapping(ptr, mapped, self.size);
+            std::ptr::copy_nonoverlapping(data.as_ptr(), mapped, self.size);
         }
         self.allocator.handle.unmap_memory(&self.allocation);
     }
 
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    pub fn is_device_local(&self) -> bool {
+        self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw() != 0
     }
 }
 

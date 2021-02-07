@@ -1358,6 +1358,7 @@ dependencies = [
  "anyhow",
  "ash",
  "ash-window",
+ "num-traits",
  "petgraph",
  "raw-window-handle",
  "vk-mem",

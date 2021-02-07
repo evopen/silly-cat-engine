@@ -60,5 +60,17 @@ fn test_all() {
         &[],
     ));
 
-    let allocator = Allocator::new(device.clone());
+    let allocator = Arc::new(Allocator::new(device.clone()));
+    let descriptor_pool = DescriptorPool::new(device.clone(), &[], 0);
+
+    let mut buffer = Buffer::new(
+        allocator.clone(),
+        100,
+        vk::BufferUsageFlags::VERTEX_BUFFER,
+        vk_mem::MemoryUsage::CpuToGpu,
+    );
+    assert_eq!(buffer.size(), 100);
+    buffer.map();
+    buffer.device_address();
+    dbg!(vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw() & buffer.memory_type());
 }

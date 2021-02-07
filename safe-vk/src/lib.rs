@@ -1,8 +1,7 @@
-use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0};
 
 use anyhow::Result;
-use ash::vk;
-use vk_mem::ffi::VmaStats;
+use ash::{extensions, vk};
 
 use std::ffi::{CStr, CString};
 use std::sync::Arc;
@@ -39,6 +38,7 @@ impl Entry {
 pub struct Instance {
     handle: ash::Instance,
     entry: Arc<Entry>,
+    surface_loader: ash::extensions::khr::Surface,
 }
 
 impl Instance {
@@ -76,8 +76,13 @@ impl Instance {
             .enabled_layer_names(&layers_names_raw)
             .enabled_extension_names(&extension_names_raw);
         let handle = unsafe { entry.handle.create_instance(&create_info, None).unwrap() };
+        let surface_loader = ash::extensions::khr::Surface::new(&entry.handle, &handle);
 
-        let result = Self { handle, entry };
+        let result = Self {
+            handle,
+            entry,
+            surface_loader,
+        };
 
         result
     }
@@ -181,6 +186,8 @@ impl Surface {
 pub struct Device {
     handle: ash::Device,
     pdevice: Arc<PhysicalDevice>,
+    acceleration_structure_loader: ash::extensions::khr::AccelerationStructure,
+    swapchain_loader: ash::extensions::khr::Swapchain,
 }
 
 impl Device {
@@ -232,7 +239,18 @@ impl Device {
                 .create_device(pdevice.handle, &device_create_info, None)
                 .unwrap();
 
-            Self { handle, pdevice }
+            let acceleration_structure_loader =
+                ash::extensions::khr::AccelerationStructure::new(&pdevice.instance.handle, &handle);
+
+            let swapchain_loader =
+                ash::extensions::khr::Swapchain::new(&pdevice.instance.handle, &handle);
+
+            Self {
+                handle,
+                pdevice,
+                acceleration_structure_loader,
+                swapchain_loader,
+            }
         }
     }
 }
@@ -300,3 +318,652 @@ impl Drop for DescriptorPool {
         }
     }
 }
+
+pub struct Buffer {
+    allocator: Arc<Allocator>,
+    handle: vk::Buffer,
+    allocation: vk_mem::Allocation,
+    mapped: bool,
+    device_address: vk::DeviceAddress,
+    size: usize,
+    allocation_info: vk_mem::AllocationInfo,
+}
+
+impl Buffer {
+    pub fn new<I>(
+        allocator: Arc<Allocator>,
+        size: I,
+        buffer_usage: vk::BufferUsageFlags,
+        memory_usage: vk_mem::MemoryUsage,
+    ) -> Self
+    where
+        I: num_traits::PrimInt,
+    {
+        let (handle, allocation, allocation_info) = allocator
+            .handle
+            .create_buffer(
+                &vk::BufferCreateInfo::builder()
+                    .usage(buffer_usage | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                    .size(size.to_u64().unwrap())
+                    .build(),
+                &vk_mem::AllocationCreateInfo {
+                    usage: memory_usage,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        unsafe {
+            let device_address = allocator.device.handle.get_buffer_device_address(
+                &vk::BufferDeviceAddressInfo::builder()
+                    .buffer(handle)
+                    .build(),
+            );
+
+            Self {
+                handle,
+                allocation,
+                mapped: false,
+                device_address,
+                size: size.to_usize().unwrap(),
+                allocator,
+                allocation_info,
+            }
+        }
+    }
+
+    pub fn map(&mut self) -> *mut u8 {
+        if self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw()
+            != 0
+        {
+            panic!("cannot map device local memory");
+        }
+        self.mapped = true;
+        self.allocator.handle.map_memory(&self.allocation).unwrap()
+    }
+
+    pub fn unmap(&mut self) {
+        self.mapped = false;
+        self.allocator.handle.unmap_memory(&self.allocation)
+    }
+
+    pub fn memory_type(&self) -> u32 {
+        self.allocation_info.get_memory_type()
+    }
+
+    pub fn device_address(&self) -> vk::DeviceAddress {
+        self.device_address
+    }
+
+    pub fn copy_from(&self, ptr: *const u8) {
+        let mapped = self.allocator.handle.map_memory(&self.allocation).unwrap();
+        unsafe {
+            std::ptr::copy_nonoverlapping(ptr, mapped, self.size);
+        }
+        self.allocator.handle.unmap_memory(&self.allocation);
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+}
+
+impl Drop for Buffer {
+    fn drop(&mut self) {
+        if self.mapped {
+            self.unmap();
+        }
+        self.allocator
+            .handle
+            .destroy_buffer(self.handle, &self.allocation);
+    }
+}
+
+pub struct Queue {
+    handle: vk::Queue,
+}
+
+impl Queue {
+    pub fn new(device: Arc<Device>) -> Self {
+        unsafe {
+            let handle = device
+                .handle
+                .get_device_queue(device.pdevice.queue_family_index, 0);
+            Self { handle }
+        }
+    }
+}
+
+pub struct CommandPool {
+    handle: vk::CommandPool,
+    device: Arc<Device>,
+}
+
+impl CommandPool {
+    pub fn new(device: Arc<Device>) -> Self {
+        unsafe {
+            let handle = device
+                .handle
+                .create_command_pool(
+                    &vk::CommandPoolCreateInfo::builder()
+                        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                        .queue_family_index(device.pdevice.queue_family_index)
+                        .build(),
+                    None,
+                )
+                .unwrap();
+
+            Self { handle, device }
+        }
+    }
+}
+
+impl Drop for CommandPool {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_command_pool(self.handle, None);
+        }
+    }
+}
+
+pub struct CommandBuffer {
+    handle: vk::CommandBuffer,
+    pool: Arc<CommandPool>,
+}
+
+impl CommandBuffer {
+    pub fn new(pool: Arc<CommandPool>) -> Result<Self> {
+        unsafe {
+            let device = &pool.device.handle;
+            let handle = device
+                .allocate_command_buffers(
+                    &vk::CommandBufferAllocateInfo::builder()
+                        .command_pool(pool.handle)
+                        .command_buffer_count(1)
+                        .level(vk::CommandBufferLevel::PRIMARY)
+                        .build(),
+                )?
+                .first()
+                .unwrap()
+                .to_owned();
+
+            Ok(Self { handle, pool })
+        }
+    }
+
+    pub fn encode<F>(&self, func: F) -> Result<()>
+    where
+        F: FnOnce(&CommandBuffer),
+    {
+        unsafe {
+            let device = &self.pool.device.handle;
+            device.begin_command_buffer(self.handle, &vk::CommandBufferBeginInfo::default())?;
+            func(&self);
+            device.end_command_buffer(self.handle)?;
+            Ok(())
+        }
+    }
+}
+
+impl Drop for CommandBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.pool
+                .device
+                .handle
+                .free_command_buffers(self.pool.handle, &[self.handle]);
+        }
+    }
+}
+
+pub struct Swapchain {
+    handle: vk::SwapchainKHR,
+    device: Arc<Device>,
+    surface: Arc<Surface>,
+    extent: vk::Extent2D,
+}
+
+impl Swapchain {
+    pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> Result<Self> {
+        unsafe {
+            let surface_loader = &device.pdevice.instance.surface_loader;
+            let surface_capabilities = surface_loader
+                .get_physical_device_surface_capabilities(device.pdevice.handle, surface.handle)
+                .unwrap();
+
+            let surface_format = surface_loader
+                .get_physical_device_surface_formats(device.pdevice.handle, surface.handle)
+                .unwrap()[0];
+
+            let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+                .surface(surface.handle)
+                .min_image_count(2)
+                .image_color_space(surface_format.color_space)
+                .image_format(surface_format.format)
+                .image_extent(surface_capabilities.current_extent)
+                .image_usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
+                )
+                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
+                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+                .present_mode(vk::PresentModeKHR::FIFO)
+                .clipped(true)
+                .image_array_layers(1);
+            let handle = device
+                .swapchain_loader
+                .create_swapchain(&swapchain_create_info, None)?;
+            let width = surface_capabilities.current_extent.width;
+            let height = surface_capabilities.current_extent.height;
+
+            Ok(Self {
+                handle,
+                device,
+                surface,
+                extent: surface_capabilities.current_extent,
+            })
+        }
+    }
+
+    pub fn acquire_next_image(&self, semaphore: vk::Semaphore) -> Result<(u32, bool)> {
+        unsafe {
+            Ok(self.device.swapchain_loader.acquire_next_image(
+                self.handle,
+                0,
+                semaphore,
+                vk::Fence::null(),
+            )?)
+        }
+    }
+
+    pub fn renew(&mut self) {
+        let swapchain_loader = &self.device.swapchain_loader;
+        let surface_loader = &self.device.pdevice.instance.surface_loader;
+        let pdevice = &self.device.pdevice;
+        unsafe {
+            swapchain_loader.destroy_swapchain(self.handle, None);
+            let surface_capabilities = surface_loader
+                .get_physical_device_surface_capabilities(pdevice.handle, self.surface.handle)
+                .unwrap();
+
+            let surface_format = surface_loader
+                .get_physical_device_surface_formats(pdevice.handle, self.surface.handle)
+                .unwrap()[0];
+
+            let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
+                .surface(self.surface.handle)
+                .min_image_count(2)
+                .image_color_space(surface_format.color_space)
+                .image_format(surface_format.format)
+                .image_extent(surface_capabilities.current_extent)
+                .image_usage(
+                    vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
+                )
+                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
+                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+                .present_mode(vk::PresentModeKHR::FIFO)
+                .clipped(true)
+                .image_array_layers(1);
+            self.handle = swapchain_loader
+                .create_swapchain(&swapchain_create_info, None)
+                .unwrap();
+            let width = surface_capabilities.current_extent.width;
+            let height = surface_capabilities.current_extent.height;
+        }
+    }
+}
+
+impl Drop for Swapchain {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .swapchain_loader
+                .destroy_swapchain(self.handle, None)
+        }
+    }
+}
+
+enum ImageType {
+    Allocated {
+        allocator: Arc<Allocator>,
+        allocation: vk_mem::Allocation,
+        allocation_info: vk_mem::AllocationInfo,
+    },
+    Swapchain {
+        swapchain: Arc<Swapchain>,
+    },
+}
+
+pub struct Image {
+    handle: vk::Image,
+    view: vk::ImageView,
+    image_type: ImageType,
+    width: u32,
+    height: u32,
+    layout: vk::ImageLayout,
+}
+
+impl Image {
+    pub fn new(
+        allocator: Arc<Allocator>,
+        width: u32,
+        height: u32,
+        image_usage: vk::ImageUsageFlags,
+        memory_usage: vk_mem::MemoryUsage,
+    ) -> Result<Self> {
+        unsafe {
+            let (handle, allocation, allocation_info) = allocator.handle.create_image(
+                &vk::ImageCreateInfo::builder()
+                    .image_type(vk::ImageType::TYPE_2D)
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .extent(vk::Extent3D {
+                        width,
+                        height,
+                        depth: 1,
+                    })
+                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .mip_levels(1)
+                    .array_layers(1)
+                    .tiling(vk::ImageTiling::OPTIMAL)
+                    .usage(image_usage)
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE)
+                    .initial_layout(vk::ImageLayout::UNDEFINED)
+                    .build(),
+                &vk_mem::AllocationCreateInfo {
+                    usage: memory_usage,
+                    ..Default::default()
+                },
+            )?;
+            let view = allocator.device.handle.create_image_view(
+                &vk::ImageViewCreateInfo::builder()
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .subresource_range(
+                        vk::ImageSubresourceRange::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .base_mip_level(0)
+                            .level_count(1)
+                            .base_array_layer(0)
+                            .layer_count(1)
+                            .build(),
+                    )
+                    .image(handle)
+                    .build(),
+                None,
+            )?;
+
+            let image_type = ImageType::Allocated {
+                allocator,
+                allocation,
+                allocation_info,
+            };
+
+            Ok(Self {
+                handle,
+                view,
+                width,
+                height,
+                layout: vk::ImageLayout::UNDEFINED,
+                image_type,
+            })
+        }
+    }
+
+    pub fn from_swapchain(
+        swapchain: Arc<Swapchain>,
+        width: u32,
+        height: u32,
+        layout: vk::ImageLayout,
+    ) -> Vec<Self> {
+        unsafe {
+            let device = swapchain.device.as_ref();
+            let images = device
+                .swapchain_loader
+                .get_swapchain_images(swapchain.handle)
+                .unwrap();
+
+            let views = images
+                .iter()
+                .map(|handle| {
+                    device
+                        .handle
+                        .create_image_view(
+                            &vk::ImageViewCreateInfo::builder()
+                                .view_type(vk::ImageViewType::TYPE_2D)
+                                .format(vk::Format::B8G8R8A8_UNORM)
+                                .subresource_range(
+                                    vk::ImageSubresourceRange::builder()
+                                        .aspect_mask(vk::ImageAspectFlags::COLOR)
+                                        .base_mip_level(0)
+                                        .level_count(1)
+                                        .base_array_layer(0)
+                                        .layer_count(1)
+                                        .build(),
+                                )
+                                .image(*handle)
+                                .build(),
+                            None,
+                        )
+                        .unwrap()
+                })
+                .collect::<Vec<_>>();
+            let results = images
+                .into_iter()
+                .zip(views)
+                .map(|(handle, view)| Self {
+                    handle,
+                    view,
+                    image_type: ImageType::Swapchain {
+                        swapchain: swapchain.clone(),
+                    },
+                    width: swapchain.extent.width,
+                    height: swapchain.extent.height,
+                    layout: vk::ImageLayout::UNDEFINED,
+                })
+                .collect::<Vec<_>>();
+
+            results
+        }
+    }
+
+    // pub fn view(&self) -> vk::ImageView {
+    //     self.view
+    // }
+
+    pub fn cmd_set_layout(
+        &mut self,
+        command_buffer: &CommandBuffer,
+        layout: vk::ImageLayout,
+        need_old_data: bool,
+    ) {
+        let old_layout = match need_old_data {
+            true => self.layout,
+            false => vk::ImageLayout::UNDEFINED,
+        };
+        cmd_set_image_layout(old_layout, command_buffer, self.handle, layout);
+        self.layout = layout;
+    }
+}
+
+impl Drop for Image {
+    fn drop(&mut self) {
+        match &self.image_type {
+            ImageType::Allocated {
+                allocator,
+                allocation,
+                ..
+            } => unsafe {
+                allocator.handle.destroy_image(self.handle, &allocation);
+            },
+            ImageType::Swapchain { .. } => {}
+        }
+    }
+}
+
+fn cmd_set_image_layout(
+    old_layout: vk::ImageLayout,
+    command_buffer: &CommandBuffer,
+    image: vk::Image,
+    new_layout: vk::ImageLayout,
+) {
+    use vk::AccessFlags;
+    use vk::ImageLayout;
+
+    let device = &command_buffer.pool.device.handle;
+    unsafe {
+        let src_access_mask = match old_layout {
+            ImageLayout::UNDEFINED => AccessFlags::default(),
+            ImageLayout::GENERAL => AccessFlags::default(),
+            ImageLayout::COLOR_ATTACHMENT_OPTIMAL => AccessFlags::COLOR_ATTACHMENT_WRITE,
+            ImageLayout::TRANSFER_DST_OPTIMAL => AccessFlags::TRANSFER_WRITE,
+            ImageLayout::TRANSFER_SRC_OPTIMAL => AccessFlags::TRANSFER_READ,
+            ImageLayout::PRESENT_SRC_KHR => AccessFlags::COLOR_ATTACHMENT_READ,
+            _ => {
+                unimplemented!("unknown old layout {:?}", old_layout);
+            }
+        };
+        let dst_access_mask = match new_layout {
+            ImageLayout::COLOR_ATTACHMENT_OPTIMAL => AccessFlags::COLOR_ATTACHMENT_WRITE,
+            ImageLayout::GENERAL => AccessFlags::default(),
+            ImageLayout::TRANSFER_SRC_OPTIMAL => AccessFlags::TRANSFER_READ,
+            ImageLayout::TRANSFER_DST_OPTIMAL => AccessFlags::TRANSFER_WRITE,
+            ImageLayout::PRESENT_SRC_KHR => AccessFlags::COLOR_ATTACHMENT_READ,
+            _ => {
+                unimplemented!("unknown new layout {:?}", new_layout);
+            }
+        };
+        device.cmd_pipeline_barrier(
+            command_buffer.handle,
+            vk::PipelineStageFlags::ALL_COMMANDS,
+            vk::PipelineStageFlags::ALL_COMMANDS,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[],
+            &[vk::ImageMemoryBarrier::builder()
+                .image(image)
+                .old_layout(old_layout)
+                .new_layout(new_layout)
+                .src_access_mask(src_access_mask)
+                .dst_access_mask(dst_access_mask)
+                .subresource_range(
+                    vk::ImageSubresourceRange::builder()
+                        .aspect_mask(vk::ImageAspectFlags::COLOR)
+                        .base_mip_level(0)
+                        .level_count(1)
+                        .base_array_layer(0)
+                        .layer_count(1)
+                        .build(),
+                )
+                .build()],
+        );
+    }
+}
+
+// pub struct AccelerationStructure {
+//     handle: vk::AccelerationStructureKHR,
+//     as_buffer: Buffer,
+//     device_address: u64,
+// }
+
+// impl AccelerationStructure {
+//     pub fn new(
+//         allocator: Arc<Allocator>,
+//         geometries: &[vk::AccelerationStructureGeometryKHR],
+//         as_type: vk::AccelerationStructureTypeKHR,
+//         primitive_count: u32,
+//         queue: &Queue,
+//     ) -> Result<Self> {
+//         unsafe {
+//             let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+//                 .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+//                 .ty(as_type)
+//                 .geometries(geometries);
+//             let size_info = allocator
+//                 .device
+//                 .acceleration_structure_loader
+//                 .get_acceleration_structure_build_sizes(
+//                     allocator.device.handle.handle(),
+//                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
+//                     &build_geometry_info,
+//                     &[1],
+//                 );
+//             let as_buffer = Buffer::new(
+//                 allocator.clone(),
+//                 size_info.acceleration_structure_size,
+//                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+//                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+//                 vk_mem::MemoryUsage::GpuOnly,
+//             );
+
+//             let handle = allocator
+//                 .device
+//                 .acceleration_structure_loader
+//                 .create_acceleration_structure(
+//                     &vk::AccelerationStructureCreateInfoKHR::builder()
+//                         .ty(as_type)
+//                         .buffer(as_buffer.handle)
+//                         .size(size_info.acceleration_structure_size)
+//                         .build(),
+//                     None,
+//                 )?;
+
+//             let scratch_buffer = Buffer::new(
+//                 allocator.clone(),
+//                 size_info.build_scratch_size,
+//                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+//                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+//                 vk_mem::MemoryUsage::GpuOnly,
+//             );
+
+//             let build_geometry_info = build_geometry_info
+//                 .dst_acceleration_structure(handle)
+//                 .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+//                 .scratch_data(vk::DeviceOrHostAddressKHR {
+//                     device_address: scratch_buffer.device_address(),
+//                 });
+
+//             let build_range_info = vk::AccelerationStructureBuildRangeInfoKHR::builder()
+//                 .first_vertex(0)
+//                 .primitive_offset(0)
+//                 .transform_offset(0)
+//                 .primitive_count(primitive_count)
+//                 .build();
+
+//             let command_buffer = CommandBuffer::new(&vulkan.device, vulkan.command_pool)?;
+//             command_buffer.begin()?;
+//             vulkan
+//                 .acceleration_structure_loader
+//                 .cmd_build_acceleration_structures(
+//                     command_buffer.handle(),
+//                     &[build_geometry_info.build()],
+//                     &[&[build_range_info]],
+//                 );
+//             command_buffer.end()?;
+//             queue.submit_binary(command_buffer, &[], &[], &[])?.wait()?;
+
+//             let device_address = vulkan
+//                 .acceleration_structure_loader
+//                 .get_acceleration_structure_device_address(
+//                     vulkan.device.handle(),
+//                     &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+//                         .acceleration_structure(handle)
+//                         .build(),
+//                 );
+
+//             Ok(Self {
+//                 handle,
+//                 as_buffer,
+//                 device_address,
+//             })
+//         }
+//     }
+
+//     pub fn device_address(&self) -> u64 {
+//         self.device_address
+//     }
+
+//     pub fn handle(&self) -> vk::AccelerationStructureKHR {
+//         self.handle
+//     }
+// }

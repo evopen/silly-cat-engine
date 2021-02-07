@@ -7,11 +7,12 @@ fn main() {
             .filter(|p| p.extension().is_some())
             .filter(|p| {
                 let ext = p.extension().unwrap().to_str().unwrap();
-                ext.eq("gcda") 
+                ext.eq("gcda")
             })
             .for_each(|p| std::fs::remove_file(p).unwrap());
     }
 
+    let _ = std::fs::remove_dir_all("target/coverage/report");
     let _ = std::fs::remove_file("safe-vk/default.profraw");
 
     // let output = std::process::Command::new("cargo")

@@ -13,6 +13,7 @@ ash-window = "0.5.0"
 petgraph = "0.5.1"
 raw-window-handle = "0.3.3"
 vk-mem = { version = "0.2.2", features = ["link_vulkan"] }
+num-traits = "0.2.14"
 
 [dev-dependencies]
 winit = "0.24.0"

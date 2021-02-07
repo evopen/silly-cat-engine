@@ -54,5 +54,11 @@ fn test_all() {
     ));
     let surface = Surface::new(instance.clone(), &window);
     let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), &surface));
-    let device = Device::new(pdevice.clone(), &vk::PhysicalDeviceFeatures::default(), &[]);
+    let device = Arc::new(Device::new(
+        pdevice.clone(),
+        &vk::PhysicalDeviceFeatures::default(),
+        &[],
+    ));
+
+    let allocator = Allocator::new(device.clone());
 }

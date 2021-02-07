@@ -1,7 +1,8 @@
-use ash::version::{EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
 
 use anyhow::Result;
 use ash::vk;
+use vk_mem::ffi::VmaStats;
 
 use std::ffi::{CStr, CString};
 use std::sync::Arc;
@@ -254,6 +255,48 @@ impl Allocator {
             .unwrap();
 
             Self { handle, device }
+        }
+    }
+
+    pub fn stats(&self) -> vk_mem::ffi::VmaStats {
+        self.handle.calculate_stats().unwrap()
+    }
+}
+
+impl Drop for Allocator {
+    fn drop(&mut self) {
+        self.handle.destroy();
+    }
+}
+
+pub struct DescriptorPool {
+    handle: vk::DescriptorPool,
+    device: Arc<Device>,
+}
+
+impl DescriptorPool {
+    pub fn new(
+        device: Arc<Device>,
+        descriptor_pool_size: &[vk::DescriptorPoolSize],
+        max_sets: u32,
+    ) -> Self {
+        unsafe {
+            let info = vk::DescriptorPoolCreateInfo::builder()
+                .pool_sizes(descriptor_pool_size)
+                .max_sets(max_sets)
+                .build();
+            let handle = device.handle.create_descriptor_pool(&info, None).unwrap();
+            Self { handle, device }
+        }
+    }
+}
+
+impl Drop for DescriptorPool {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .handle
+                .destroy_descriptor_pool(self.handle, None);
         }
     }
 }

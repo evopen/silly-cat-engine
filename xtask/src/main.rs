@@ -62,7 +62,7 @@ fn main() {
     println!("{}", std::str::from_utf8(&output).unwrap());
 
     let output = std::process::Command::new("grcov")
-        .arg(".")
+        .arg("safe-vk/default.profraw")
         .args(&["-s", "./safe-vk/src"])
         .args(&["--binary-path", "./target/coverage/source/debug/"])
         .args(&["-t", "html"])

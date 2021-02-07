@@ -1,6 +1,6 @@
 fn main() {
     // clean up old coverage data
-    if let Ok(s) = std::fs::read_dir("target/debug/deps") {
+    if let Ok(s) = std::fs::read_dir("target/coverage/old-school/target/debug/deps") {
         s.map(|p| p.unwrap().path())
             .filter(|p| p.extension().is_some())
             .filter(|p| {
@@ -14,6 +14,7 @@ fn main() {
         .arg("build")
         .args(&["--package", "safe-vk"])
         .env("RUSTFLAGS", "-Zinstrument-coverage")
+        .env("CARGO_TARGET_DIR", "target/coverage/source-based")
         .output()
         .unwrap()
         .stderr;
@@ -24,6 +25,7 @@ fn main() {
         .args(&["--package", "safe-vk"])
         .args(&["--", "--test-threads=1"])
         .env("RUSTFLAGS", "-Zinstrument-coverage")
+        .env("CARGO_TARGET_DIR", "target/coverage/source-based")
         .output()
         .unwrap()
         .stderr;
@@ -35,6 +37,7 @@ fn main() {
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTFLAGS", "-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort")
         .env("RUSTDOCFLAGS", "-Cpanic=abort")
+        .env("CARGO_TARGET_DIR", "target/coverage/old-school")
         .output()
         .unwrap()
         .stderr;
@@ -47,6 +50,7 @@ fn main() {
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTFLAGS", "-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort")
         .env("RUSTDOCFLAGS", "-Cpanic=abort")
+        .env("CARGO_TARGET_DIR", "target/coverage/old-school")
         .output()
         .unwrap()
         .stderr;
@@ -55,11 +59,11 @@ fn main() {
     let output = std::process::Command::new("grcov")
         .arg("safe-vk/default.profraw")
         .args(&["-s", "./safe-vk"])
-        .args(&["--binary-path", "./target/debug/"])
+        .args(&["--binary-path", "target/coverage/old-school/debug/"])
         .args(&["-t", "html"])
         .arg("--branch")
         .arg("--ignore-not-existing")
-        .args(&["-o", "target/debug/coverage/"])
+        .args(&["-o", "target/coverage/"])
         .output()
         .unwrap()
         .stderr;

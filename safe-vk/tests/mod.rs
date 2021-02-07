@@ -88,5 +88,5 @@ fn test_all() {
         vk_mem::MemoryUsage::GpuOnly,
     );
 
-    let images = Image::from_swapchain(swapchain.clone(), 234, 345);
+    let images = Image::from_swapchain(swapchain.clone());
 }

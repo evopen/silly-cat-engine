@@ -7,7 +7,7 @@ fn main() {
             .filter(|p| p.extension().is_some())
             .filter(|p| {
                 let ext = p.extension().unwrap().to_str().unwrap();
-                ext.eq("gcda") || ext.eq("gcno")
+                ext.eq("gcda") 
             })
             .for_each(|p| std::fs::remove_file(p).unwrap());
     }
@@ -30,7 +30,7 @@ fn main() {
     //     .env("CARGO_INCREMENTAL", "0")
     //     .env("RUSTFLAGS", "-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort")
     //     .env("RUSTDOCFLAGS", "-Cpanic=abort")
-    //     .env("CARGO_TARGET_DIR", "target/coverage")
+    //     .env("CARGO_TARGET_DIR", "target/coverage/regular")
     //     .output()
     //     .unwrap()
     //     .stderr;

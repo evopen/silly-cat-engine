@@ -150,6 +150,7 @@ impl PhysicalDevice {
 pub struct Surface {
     handle: vk::SurfaceKHR,
     instance: Arc<Instance>,
+    required_extensions: Vec<String>,
 }
 
 impl Surface {
@@ -162,19 +163,27 @@ impl Surface {
                 .unwrap()
         };
 
-        Self { handle, instance }
+        let required_extensions = ash_window::enumerate_required_extensions(window)
+            .unwrap()
+            .iter()
+            .map(|s| s.to_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+
+        Self {
+            handle,
+            instance,
+            required_extensions,
+        }
     }
 }
 
 pub struct Device {
     handle: ash::Device,
-    instance: Arc<Instance>,
     pdevice: Arc<PhysicalDevice>,
 }
 
 impl Device {
     pub fn new(
-        instance: Arc<Instance>,
         pdevice: Arc<PhysicalDevice>,
         device_features: &vk::PhysicalDeviceFeatures,
         device_extension_names: &[&str],
@@ -216,16 +225,13 @@ impl Device {
                         .build(),
                 )
                 .build();
-            let handle = instance
+            let handle = pdevice
+                .instance
                 .handle
                 .create_device(pdevice.handle, &device_create_info, None)
                 .unwrap();
 
-            Self {
-                handle,
-                instance,
-                pdevice,
-            }
+            Self { handle, pdevice }
         }
     }
 }
@@ -241,7 +247,7 @@ impl Allocator {
             let handle = vk_mem::Allocator::new(&vk_mem::AllocatorCreateInfo {
                 physical_device: device.pdevice.handle,
                 device: device.handle.clone(),
-                instance: device.instance.handle.clone(),
+                instance: device.pdevice.instance.handle.clone(),
                 flags: vk_mem::AllocatorCreateFlags::from_bits_unchecked(0x0000_0020),
                 ..Default::default()
             })

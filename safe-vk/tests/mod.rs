@@ -52,12 +52,12 @@ fn test_all() {
         &["VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor"],
         surface_extensions.as_slice(),
     ));
-    let surface = Surface::new(instance.clone(), &window);
+    let surface = Arc::new(Surface::new(instance.clone(), &window));
     let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), &surface));
     let device = Arc::new(Device::new(
         pdevice.clone(),
         &vk::PhysicalDeviceFeatures::default(),
-        &[],
+        &[ash::extensions::khr::Swapchain::name().to_str().unwrap()],
     ));
 
     let allocator = Arc::new(Allocator::new(device.clone()));
@@ -73,4 +73,20 @@ fn test_all() {
     buffer.map();
     buffer.device_address();
     dbg!(vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw() & buffer.memory_type());
+    let queue = Queue::new(device.clone());
+
+    let command_pool = Arc::new(CommandPool::new(device.clone()));
+
+    let command_buffer = CommandBuffer::new(command_pool.clone());
+    let swapchain = Arc::new(Swapchain::new(device.clone(), surface.clone()));
+
+    let image = Image::new(
+        allocator.clone(),
+        123,
+        234,
+        vk::ImageUsageFlags::STORAGE,
+        vk_mem::MemoryUsage::GpuOnly,
+    );
+
+    let images = Image::from_swapchain(swapchain.clone(), 234, 345);
 }

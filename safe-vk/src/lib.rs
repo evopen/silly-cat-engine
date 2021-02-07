@@ -421,6 +421,7 @@ impl Drop for Buffer {
 
 pub struct Queue {
     handle: vk::Queue,
+    device: Arc<Device>,
 }
 
 impl Queue {
@@ -429,7 +430,7 @@ impl Queue {
             let handle = device
                 .handle
                 .get_device_queue(device.pdevice.queue_family_index, 0);
-            Self { handle }
+            Self { handle, device }
         }
     }
 }
@@ -472,7 +473,7 @@ pub struct CommandBuffer {
 }
 
 impl CommandBuffer {
-    pub fn new(pool: Arc<CommandPool>) -> Result<Self> {
+    pub fn new(pool: Arc<CommandPool>) -> Self {
         unsafe {
             let device = &pool.device.handle;
             let handle = device
@@ -482,12 +483,13 @@ impl CommandBuffer {
                         .command_buffer_count(1)
                         .level(vk::CommandBufferLevel::PRIMARY)
                         .build(),
-                )?
+                )
+                .unwrap()
                 .first()
                 .unwrap()
                 .to_owned();
 
-            Ok(Self { handle, pool })
+            Self { handle, pool }
         }
     }
 
@@ -524,7 +526,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> Result<Self> {
+    pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> Self {
         unsafe {
             let surface_loader = &device.pdevice.instance.surface_loader;
             let surface_capabilities = surface_loader
@@ -552,16 +554,17 @@ impl Swapchain {
                 .image_array_layers(1);
             let handle = device
                 .swapchain_loader
-                .create_swapchain(&swapchain_create_info, None)?;
+                .create_swapchain(&swapchain_create_info, None)
+                .unwrap();
             let width = surface_capabilities.current_extent.width;
             let height = surface_capabilities.current_extent.height;
 
-            Ok(Self {
+            Self {
                 handle,
                 device,
                 surface,
                 extent: surface_capabilities.current_extent,
-            })
+            }
         }
     }
 
@@ -651,47 +654,54 @@ impl Image {
         height: u32,
         image_usage: vk::ImageUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
-    ) -> Result<Self> {
+    ) -> Self {
         unsafe {
-            let (handle, allocation, allocation_info) = allocator.handle.create_image(
-                &vk::ImageCreateInfo::builder()
-                    .image_type(vk::ImageType::TYPE_2D)
-                    .format(vk::Format::B8G8R8A8_UNORM)
-                    .extent(vk::Extent3D {
-                        width,
-                        height,
-                        depth: 1,
-                    })
-                    .samples(vk::SampleCountFlags::TYPE_1)
-                    .mip_levels(1)
-                    .array_layers(1)
-                    .tiling(vk::ImageTiling::OPTIMAL)
-                    .usage(image_usage)
-                    .sharing_mode(vk::SharingMode::EXCLUSIVE)
-                    .initial_layout(vk::ImageLayout::UNDEFINED)
-                    .build(),
-                &vk_mem::AllocationCreateInfo {
-                    usage: memory_usage,
-                    ..Default::default()
-                },
-            )?;
-            let view = allocator.device.handle.create_image_view(
-                &vk::ImageViewCreateInfo::builder()
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(vk::Format::B8G8R8A8_UNORM)
-                    .subresource_range(
-                        vk::ImageSubresourceRange::builder()
-                            .aspect_mask(vk::ImageAspectFlags::COLOR)
-                            .base_mip_level(0)
-                            .level_count(1)
-                            .base_array_layer(0)
-                            .layer_count(1)
-                            .build(),
-                    )
-                    .image(handle)
-                    .build(),
-                None,
-            )?;
+            let (handle, allocation, allocation_info) = allocator
+                .handle
+                .create_image(
+                    &vk::ImageCreateInfo::builder()
+                        .image_type(vk::ImageType::TYPE_2D)
+                        .format(vk::Format::B8G8R8A8_UNORM)
+                        .extent(vk::Extent3D {
+                            width,
+                            height,
+                            depth: 1,
+                        })
+                        .samples(vk::SampleCountFlags::TYPE_1)
+                        .mip_levels(1)
+                        .array_layers(1)
+                        .tiling(vk::ImageTiling::OPTIMAL)
+                        .usage(image_usage)
+                        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+                        .initial_layout(vk::ImageLayout::UNDEFINED)
+                        .build(),
+                    &vk_mem::AllocationCreateInfo {
+                        usage: memory_usage,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            let view = allocator
+                .device
+                .handle
+                .create_image_view(
+                    &vk::ImageViewCreateInfo::builder()
+                        .view_type(vk::ImageViewType::TYPE_2D)
+                        .format(vk::Format::B8G8R8A8_UNORM)
+                        .subresource_range(
+                            vk::ImageSubresourceRange::builder()
+                                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                                .base_mip_level(0)
+                                .level_count(1)
+                                .base_array_layer(0)
+                                .layer_count(1)
+                                .build(),
+                        )
+                        .image(handle)
+                        .build(),
+                    None,
+                )
+                .unwrap();
 
             let image_type = ImageType::Allocated {
                 allocator,
@@ -699,23 +709,18 @@ impl Image {
                 allocation_info,
             };
 
-            Ok(Self {
+            Self {
                 handle,
                 view,
                 width,
                 height,
                 layout: vk::ImageLayout::UNDEFINED,
                 image_type,
-            })
+            }
         }
     }
 
-    pub fn from_swapchain(
-        swapchain: Arc<Swapchain>,
-        width: u32,
-        height: u32,
-        layout: vk::ImageLayout,
-    ) -> Vec<Self> {
+    pub fn from_swapchain(swapchain: Arc<Swapchain>, width: u32, height: u32) -> Vec<Self> {
         unsafe {
             let device = swapchain.device.as_ref();
             let images = device

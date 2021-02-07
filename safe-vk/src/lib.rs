@@ -6,6 +6,38 @@ use ash::{extensions, vk};
 use std::ffi::{CStr, CString};
 use std::sync::Arc;
 
+pub mod name {
+    pub mod instance {
+        pub mod layer {
+            pub mod khronos {
+                pub const VALIDATION: &str = "VK_LAYER_KHRONOS_validation";
+            }
+            pub mod lunarg {
+                pub const MONITOR: &str = "VK_LAYER_LUNARG_monitor";
+                pub const GFXRECONSTRUCT: &str = "VK_LAYER_LUNARG_gfxreconstruct";
+            }
+        }
+        pub mod extension {
+            pub mod ext {
+                pub const DEBUG_UTILS: &str = "VK_EXT_debug_utils";
+                pub const DEBUG_MARKER: &str = "VK_EXT_debug_marker";
+            }
+        }
+    }
+    pub mod device {
+        mod layer {}
+        pub mod extension {
+            pub mod khr {
+                pub const SWAPCHAIN: &str = "VK_KHR_swapchain";
+                pub const DEFERED_HOST_OPERATION: &str = "VK_KHR_deferred_host_operations";
+                pub const RAY_TRACING_PIPELINE: &str = "VK_KHR_ray_tracing_pipeline";
+                pub const ACCELERATION_STRUCTURE: &str = "VK_KHR_acceleration_structure";
+            }
+            mod ext {}
+        }
+    }
+}
+
 pub struct Entry {
     handle: ash::Entry,
 }

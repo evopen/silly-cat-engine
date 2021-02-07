@@ -33,7 +33,10 @@ fn test_create_instance() {
         .collect::<Vec<_>>();
     let instance = Instance::new(
         entry.clone(),
-        &["VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor"],
+        &[
+            name::instance::layer::khronos::VALIDATION,
+            "VK_LAYER_LUNARG_monitor",
+        ],
         surface_extensions.as_slice(),
     );
 }

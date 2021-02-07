@@ -556,8 +556,6 @@ impl Swapchain {
                 .swapchain_loader
                 .create_swapchain(&swapchain_create_info, None)
                 .unwrap();
-            let width = surface_capabilities.current_extent.width;
-            let height = surface_capabilities.current_extent.height;
 
             Self {
                 handle,
@@ -611,8 +609,7 @@ impl Swapchain {
             self.handle = swapchain_loader
                 .create_swapchain(&swapchain_create_info, None)
                 .unwrap();
-            let width = surface_capabilities.current_extent.width;
-            let height = surface_capabilities.current_extent.height;
+            self.extent = surface_capabilities.current_extent;
         }
     }
 }
@@ -720,7 +717,7 @@ impl Image {
         }
     }
 
-    pub fn from_swapchain(swapchain: Arc<Swapchain>, width: u32, height: u32) -> Vec<Self> {
+    pub fn from_swapchain(swapchain: Arc<Swapchain>) -> Vec<Self> {
         unsafe {
             let device = swapchain.device.as_ref();
             let images = device
@@ -798,9 +795,9 @@ impl Drop for Image {
                 allocator,
                 allocation,
                 ..
-            } => unsafe {
+            } => {
                 allocator.handle.destroy_image(self.handle, &allocation);
-            },
+            }
             ImageType::Swapchain { .. } => {}
         }
     }
@@ -862,6 +859,58 @@ fn cmd_set_image_layout(
                 )
                 .build()],
         );
+    }
+}
+
+pub struct Framebuffer {
+    handle: vk::Framebuffer,
+    device: Arc<Device>,
+}
+
+impl Framebuffer {
+    pub fn new(device: Arc<Device>, info: &vk::FramebufferCreateInfo) -> Self {
+        unsafe {
+            let handle = device.handle.create_framebuffer(&info, None).unwrap();
+            Self { handle, device }
+        }
+    }
+
+    pub fn handle(&self) -> vk::Framebuffer {
+        self.handle
+    }
+}
+
+impl Drop for Framebuffer {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_framebuffer(self.handle, None);
+        }
+    }
+}
+
+pub struct RenderPass {
+    handle: vk::RenderPass,
+    device: Arc<Device>,
+}
+
+impl RenderPass {
+    pub fn new(device: Arc<Device>, info: &vk::RenderPassCreateInfo) -> Self {
+        unsafe {
+            let handle = device.handle.create_render_pass(&info, None).unwrap();
+            Self { handle, device }
+        }
+    }
+
+    pub fn handle(&self) -> vk::RenderPass {
+        self.handle
+    }
+}
+
+impl Drop for RenderPass {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_render_pass(self.handle, None);
+        }
     }
 }
 

@@ -1359,6 +1359,9 @@ dependencies = [
  "ash",
  "ash-window",
  "petgraph",
+ "raw-window-handle",
+ "vk-mem",
+ "winit",
 ]
 
 [[package]]

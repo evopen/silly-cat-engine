@@ -1,9 +1,9 @@
-use ash::version::EntryV1_0;
+use ash::version::{EntryV1_0, InstanceV1_0};
 
 use anyhow::Result;
-use ash::{extensions, vk};
+use ash::vk;
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::sync::Arc;
 
 pub struct Entry {
@@ -35,24 +35,13 @@ impl Entry {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::Entry;
-
-    #[test]
-    fn test_entry() {
-        let entry = Entry::new().unwrap();
-        println!("Vulkan version {}", entry.vulkan_version());
-    }
-}
-
 pub struct Instance {
     handle: ash::Instance,
     entry: Arc<Entry>,
 }
 
 impl Instance {
-    pub fn new(entry: Arc<Entry>, layer_names: &[&str], extension_names: &[&str]) -> Result<Self> {
+    pub fn new(entry: Arc<Entry>, layer_names: &[&str], extension_names: &[&str]) -> Self {
         let app_name = CString::new(env!("CARGO_PKG_NAME")).unwrap();
         let engine_name = CString::new("Silly Cat Engine").unwrap();
 
@@ -89,27 +78,176 @@ impl Instance {
 
         let result = Self { handle, entry };
 
-        Ok(result)
+        result
     }
 }
 
-pub struct SurfaceLoader {
-    handle: ash::extensions::khr::Surface,
-    instance: Arc<Instance>,
-}
-
-impl SurfaceLoader {
-    pub fn new(instance: Arc<Instance>) -> Self {
-        let handle = ash::extensions::khr::Surface::new(&instance.entry.handle, &instance.handle);
-
-        Self { handle, instance }
+impl Drop for Instance {
+    fn drop(&mut self) {
+        unsafe {
+            self.handle.destroy_instance(None);
+        }
     }
 }
 
 pub struct PhysicalDevice {
     handle: vk::PhysicalDevice,
+    instance: Arc<Instance>,
+    queue_family_index: u32,
 }
 
 impl PhysicalDevice {
-    pub fn new() -> Self {}
+    pub fn new(instance: Arc<Instance>, surface: &Surface) -> Self {
+        let surface_loader =
+            ash::extensions::khr::Surface::new(&instance.entry.handle, &instance.handle);
+        let pdevices =
+            unsafe { instance.handle.enumerate_physical_devices() }.expect("Physical device error");
+
+        unsafe {
+            let (pdevice, queue_family_index) = pdevices
+                .iter()
+                .map(|pdevice| {
+                    let prop = instance.handle.get_physical_device_properties(*pdevice);
+
+                    instance
+                        .handle
+                        .get_physical_device_queue_family_properties(*pdevice)
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, ref info)| {
+                            let supports_graphic_and_surface =
+                                info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                                    && surface_loader
+                                        .get_physical_device_surface_support(
+                                            *pdevice,
+                                            index as u32,
+                                            surface.handle,
+                                        )
+                                        .unwrap();
+                            if supports_graphic_and_surface
+                                && prop.device_type == vk::PhysicalDeviceType::DISCRETE_GPU
+                            {
+                                Some((*pdevice, index))
+                            } else {
+                                None
+                            }
+                        })
+                        .next()
+                })
+                .filter_map(|v| v)
+                .next()
+                .expect("Couldn't find suitable device.");
+
+            Self {
+                handle: pdevice,
+                instance,
+                queue_family_index: queue_family_index as u32,
+            }
+        }
+    }
+}
+
+pub struct Surface {
+    handle: vk::SurfaceKHR,
+    instance: Arc<Instance>,
+}
+
+impl Surface {
+    pub fn new(
+        instance: Arc<Instance>,
+        window: &dyn raw_window_handle::HasRawWindowHandle,
+    ) -> Self {
+        let handle = unsafe {
+            ash_window::create_surface(&instance.entry.handle, &instance.handle, window, None)
+                .unwrap()
+        };
+
+        Self { handle, instance }
+    }
+}
+
+pub struct Device {
+    handle: ash::Device,
+    instance: Arc<Instance>,
+    pdevice: Arc<PhysicalDevice>,
+}
+
+impl Device {
+    pub fn new(
+        instance: Arc<Instance>,
+        pdevice: Arc<PhysicalDevice>,
+        device_features: &vk::PhysicalDeviceFeatures,
+        device_extension_names: &[&str],
+    ) -> Self {
+        unsafe {
+            let priorities = [1.0];
+
+            let queue_info = [vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(pdevice.queue_family_index)
+                .queue_priorities(&priorities)
+                .build()];
+
+            let device_extension_names = device_extension_names
+                .iter()
+                .map(|s| CString::new(*s).unwrap())
+                .collect::<Vec<_>>();
+            let device_extension_names_raw: Vec<*const i8> = device_extension_names
+                .iter()
+                .map(|raw_name| raw_name.as_ptr())
+                .collect();
+
+            let device_create_info = vk::DeviceCreateInfo::builder()
+                .queue_create_infos(&queue_info)
+                .enabled_extension_names(&device_extension_names_raw)
+                .enabled_features(&device_features)
+                .push_next(
+                    &mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
+                        .ray_tracing_pipeline(true)
+                        .build(),
+                )
+                .push_next(
+                    &mut vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
+                        .buffer_device_address(true)
+                        .build(),
+                )
+                .push_next(
+                    &mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
+                        .acceleration_structure(true)
+                        .build(),
+                )
+                .build();
+            let handle = instance
+                .handle
+                .create_device(pdevice.handle, &device_create_info, None)
+                .unwrap();
+
+            Self {
+                handle,
+                instance,
+                pdevice,
+            }
+        }
+    }
+}
+
+pub struct Allocator {
+    handle: vk_mem::Allocator,
+    device: Arc<Device>,
+}
+
+impl Allocator {
+    pub fn new(device: Arc<Device>) -> Self {
+        unsafe {
+            let handle = vk_mem::Allocator::new(&vk_mem::AllocatorCreateInfo {
+                physical_device: device.pdevice.handle,
+                device: device.handle.clone(),
+                instance: device.instance.handle.clone(),
+                flags: vk_mem::AllocatorCreateFlags::from_bits_unchecked(0x0000_0020),
+                ..Default::default()
+            })
+            .unwrap();
+
+            Self { handle, device }
+        }
+    }
 }

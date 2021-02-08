@@ -454,13 +454,9 @@ impl Buffer {
 
     pub fn copy_from<I: AsRef<[u8]>>(&self, data: I) {
         let data = data.as_ref();
-        if data.len() != self.size() {
-            panic!("unequal size");
-        }
         let mapped = self.allocator.handle.map_memory(&self.allocation).unwrap();
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), mapped, self.size);
-        }
+        let mapped_bytes = unsafe { std::slice::from_raw_parts_mut(mapped, self.size) };
+        mapped_bytes.copy_from_slice(data);
         self.allocator.handle.unmap_memory(&self.allocation);
     }
 
@@ -496,6 +492,138 @@ impl Queue {
                 .handle
                 .get_device_queue(device.pdevice.queue_family_index, 0);
             Self { handle, device }
+        }
+    }
+}
+
+pub struct Fence {
+    handle: vk::Fence,
+    device: Arc<Device>,
+}
+
+impl Fence {
+    pub fn new(device: Arc<Device>, signaled: bool) -> Self {
+        let handle = unsafe {
+            device.handle.create_fence(
+                &vk::FenceCreateInfo::builder()
+                    .flags(match signaled {
+                        true => vk::FenceCreateFlags::SIGNALED,
+                        false => vk::FenceCreateFlags::empty(),
+                    })
+                    .build(),
+                None,
+            )
+        }
+        .unwrap();
+        Self { handle, device }
+    }
+
+    pub fn wait(&self) {
+        unsafe {
+            self.device
+                .handle
+                .wait_for_fences(&[self.handle], true, std::u64::MAX)
+                .unwrap();
+        }
+    }
+
+    pub fn reset(&self) {
+        unsafe {
+            self.device.handle.reset_fences(&[self.handle]).unwrap();
+        }
+    }
+}
+
+impl Drop for Fence {
+    fn drop(&mut self) {
+        unsafe { self.device.handle.destroy_fence(self.handle, None) };
+    }
+}
+
+pub struct TimelineSemaphore {
+    handle: vk::Semaphore,
+    device: Arc<Device>,
+}
+
+impl TimelineSemaphore {
+    pub fn new(device: Arc<Device>) -> Self {
+        unsafe {
+            let handle = device
+                .handle
+                .create_semaphore(
+                    &vk::SemaphoreCreateInfo::builder()
+                        .push_next(
+                            &mut vk::SemaphoreTypeCreateInfo::builder()
+                                .semaphore_type(vk::SemaphoreType::TIMELINE)
+                                .initial_value(0)
+                                .build(),
+                        )
+                        .build(),
+                    None,
+                )
+                .unwrap();
+            Self { handle, device }
+        }
+    }
+
+    pub fn wait_for(&self, value: u64) {
+        unsafe {
+            self.device
+                .handle
+                .wait_semaphores(
+                    &vk::SemaphoreWaitInfo::builder()
+                        .semaphores(&[self.handle])
+                        .values(&[value])
+                        .build(),
+                    std::u64::MAX,
+                )
+                .unwrap();
+        }
+    }
+
+    pub fn signal(&self, value: u64) {
+        unsafe {
+            self.device
+                .handle
+                .signal_semaphore(
+                    &vk::SemaphoreSignalInfo::builder()
+                        .semaphore(self.handle)
+                        .value(value)
+                        .build(),
+                )
+                .unwrap();
+        }
+    }
+}
+
+impl Drop for TimelineSemaphore {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_semaphore(self.handle, None);
+        }
+    }
+}
+
+pub struct BinarySemaphore {
+    handle: vk::Semaphore,
+    device: Arc<Device>,
+}
+
+impl BinarySemaphore {
+    pub fn new(device: Arc<Device>) -> Result<Self> {
+        unsafe {
+            let handle = device
+                .handle
+                .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?;
+            Ok(Self { handle, device })
+        }
+    }
+}
+
+impl Drop for BinarySemaphore {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_semaphore(self.handle, None);
         }
     }
 }

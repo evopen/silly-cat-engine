@@ -1225,9 +1225,17 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    pub fn new(device: Arc<Device>, info: &vk::FramebufferCreateInfo) -> Self {
+    pub fn new(device: Arc<Device>, render_pass: Arc<RenderPass>) -> Self {
         unsafe {
-            let handle = device.handle.create_framebuffer(&info, None).unwrap();
+            let handle = device
+                .handle
+                .create_framebuffer(
+                    &vk::FramebufferCreateInfo::builder()
+                        .render_pass(render_pass.handle)
+                        .build(),
+                    None,
+                )
+                .unwrap();
             Self { handle, device }
         }
     }

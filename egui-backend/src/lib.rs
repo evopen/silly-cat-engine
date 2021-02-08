@@ -8,8 +8,8 @@ use bytemuck::{Pod, Zeroable};
 
 use shaders::Shaders;
 
-use safe_vk::vk;
-use safe_vk::MemoryUsage;
+use safe_vk::{vk, CommandBuffer, Framebuffer};
+use safe_vk::{Image, MemoryUsage};
 
 /// Enum for selecting the right buffer type.
 #[derive(Debug)]
@@ -238,5 +238,138 @@ impl UiPass {
             render_pass,
             allocator,
         }
+    }
+
+    pub fn execute(
+        &mut self,
+        command_buffer: &mut CommandBuffer,
+        color_attachment: &Image,
+        paint_jobs: &[egui::paint::PaintJob],
+        screen_descriptor: &ScreenDescriptor,
+    ) {
+        let device = self.allocator.device();
+        let image_view = color_attachment.view();
+        let framebuffer = Framebuffer::new(
+            sdevice.clone(),
+            self.render_pass.clone(),
+            &vk::FramebufferCreateInfo::builder()
+                .attachments(&[image_view])
+                .render_pass(self.render_pass.handle())
+                .layers(1)
+                .width(screen_descriptor.physical_width)
+                .height(screen_descriptor.physical_height)
+                .build(),
+        );
+
+        let scale_factor = screen_descriptor.scale_factor;
+        let physical_width = screen_descriptor.physical_width;
+        let physical_height = screen_descriptor.physical_height;
+
+        let vulkan = self.vulkan.clone();
+        let commands = |handle: vk::CommandBuffer| unsafe {
+            vulkan.device.cmd_begin_render_pass(
+                handle,
+                &vk::RenderPassBeginInfo::builder()
+                    .render_pass(self.render_pass.handle())
+                    .framebuffer(framebuffer.handle())
+                    .render_area(
+                        vk::Rect2D::builder()
+                            .extent(vk::Extent2D {
+                                width: physical_height,
+                                height: physical_height,
+                            })
+                            .build(),
+                    )
+                    .build(),
+                vk::SubpassContents::INLINE,
+            );
+            vulkan.device.cmd_bind_pipeline(
+                handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.graphics_pipeline.handle(),
+            );
+            vulkan.device.cmd_bind_descriptor_sets(
+                handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.graphics_pipeline.layout().handle(),
+                0,
+                &[self.uniform_descriptor_set.handle()],
+                &[0],
+            );
+
+            for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
+                .iter()
+                .zip(self.vertex_buffers.iter())
+                .zip(self.index_buffers.iter())
+            {
+                // Transform clip rect to physical pixels.
+                let clip_min_x = scale_factor * clip_rect.min.x;
+                let clip_min_y = scale_factor * clip_rect.min.y;
+                let clip_max_x = scale_factor * clip_rect.max.x;
+                let clip_max_y = scale_factor * clip_rect.max.y;
+
+                // Make sure clip rect can fit within an `u32`.
+                let clip_min_x = egui::clamp(clip_min_x, 0.0..=physical_width as f32);
+                let clip_min_y = egui::clamp(clip_min_y, 0.0..=physical_height as f32);
+                let clip_max_x = egui::clamp(clip_max_x, clip_min_x..=physical_width as f32);
+                let clip_max_y = egui::clamp(clip_max_y, clip_min_y..=physical_height as f32);
+
+                let clip_min_x = clip_min_x.round() as u32;
+                let clip_min_y = clip_min_y.round() as u32;
+                let clip_max_x = clip_max_x.round() as u32;
+                let clip_max_y = clip_max_y.round() as u32;
+
+                let width = (clip_max_x - clip_min_x).max(1);
+                let height = (clip_max_y - clip_min_y).max(1);
+
+                {
+                    // clip scissor rectangle to target size
+                    let x = clip_min_x.min(physical_width);
+                    let y = clip_min_y.min(physical_height);
+                    let width = width.min(physical_width - x);
+                    let height = height.min(physical_height - y);
+
+                    // skip rendering with zero-sized clip areas
+                    if width == 0 || height == 0 {
+                        continue;
+                    }
+
+                    vulkan.device.cmd_set_scissor(
+                        handle,
+                        1,
+                        &[vk::Rect2D {
+                            offset: vk::Offset2D {
+                                x: x as i32,
+                                y: y as i32,
+                            },
+                            extent: vk::Extent2D { width, height },
+                        }],
+                    );
+                }
+
+                vulkan.device.cmd_bind_descriptor_sets(
+                    handle,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.graphics_pipeline.layout().handle(),
+                    1,
+                    &[self.get_texture_bind_group(triangles.texture_id).handle()],
+                    &[0],
+                );
+                vulkan.device.cmd_bind_index_buffer(
+                    handle,
+                    index_buffer.handle,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                vulkan
+                    .device
+                    .cmd_bind_vertex_buffers(handle, 0, &[vertex_buffer.handle], &[0]);
+
+                vulkan
+                    .device
+                    .cmd_draw_indexed(handle, triangles.indices.len() as u32, 1, 0, 0, 0);
+            }
+            vulkan.device.cmd_end_render_pass(handle);
+        };
     }
 }

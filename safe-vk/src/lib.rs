@@ -11,6 +11,7 @@ use std::ffi::{CStr, CString};
 use std::sync::{Arc, Mutex};
 
 pub use ash::vk;
+pub use vk_mem::MemoryUsage;
 
 pub mod name {
     pub mod instance {
@@ -316,6 +317,10 @@ impl Allocator {
 
     pub fn stats(&self) -> vk_mem::ffi::VmaStats {
         self.handle.calculate_stats().unwrap()
+    }
+
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
@@ -1111,6 +1116,14 @@ impl Image {
         cmd_set_image_layout(old_layout, command_buffer, self.handle, layout);
         self.layout = layout;
     }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
 }
 
 impl Drop for Image {
@@ -1302,15 +1315,14 @@ impl Drop for PipelineLayout {
 
 pub struct GraphicsPipeline {
     handle: vk::Pipeline,
-    layout: PipelineLayout,
-    device: Arc<Device>,
+    layout: Arc<PipelineLayout>,
+    stages: Vec<Arc<ShaderStage>>,
 }
 
 impl GraphicsPipeline {
     pub fn new(
-        device: Arc<Device>,
-        layout: PipelineLayout,
-        stages: &[vk::PipelineShaderStageCreateInfo],
+        layout: Arc<PipelineLayout>,
+        stages: Vec<Arc<ShaderStage>>,
         vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
         input_assembly_state: &vk::PipelineInputAssemblyStateCreateInfo,
         rasterization_state: &vk::PipelineRasterizationStateCreateInfo,
@@ -1318,9 +1330,14 @@ impl GraphicsPipeline {
         depth_stencil_state: &vk::PipelineDepthStencilStateCreateInfo,
         color_blend_state: &vk::PipelineColorBlendStateCreateInfo,
     ) -> Self {
+        let device = &layout.device;
+        let stage_create_infos = stages
+            .iter()
+            .map(|s| s.shader_stage_create_info())
+            .collect::<Vec<_>>();
         let info = vk::GraphicsPipelineCreateInfo::builder()
             .layout(layout.handle)
-            .stages(stages)
+            .stages(&stage_create_infos)
             .vertex_input_state(vertex_input_state)
             .input_assembly_state(input_assembly_state)
             .rasterization_state(rasterization_state)
@@ -1338,8 +1355,8 @@ impl GraphicsPipeline {
                 .to_owned();
             Self {
                 handle,
-                device,
                 layout,
+                stages,
             }
         }
     }
@@ -1352,7 +1369,10 @@ impl GraphicsPipeline {
 impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
         unsafe {
-            self.device.handle.destroy_pipeline(self.handle, None);
+            self.layout
+                .device
+                .handle
+                .destroy_pipeline(self.handle, None);
         }
     }
 }
@@ -1390,6 +1410,102 @@ impl Drop for ShaderModule {
         unsafe {
             self.device.handle.destroy_shader_module(self.handle, None);
         }
+    }
+}
+
+pub struct DescriptorSet {
+    handle: vk::DescriptorSet,
+    descriptor_pool: Arc<DescriptorPool>,
+}
+
+impl DescriptorSet {
+    pub fn new(
+        descriptor_pool: Arc<DescriptorPool>,
+        descriptor_set_layout: &DescriptorSetLayout,
+    ) -> Self {
+        let device = &descriptor_pool.device;
+        let info = vk::DescriptorSetAllocateInfo::builder()
+            .set_layouts(&[descriptor_set_layout.handle])
+            .descriptor_pool(descriptor_pool.handle)
+            .build();
+        unsafe {
+            let handle = device
+                .handle
+                .allocate_descriptor_sets(&info)
+                .unwrap()
+                .first()
+                .unwrap()
+                .to_owned();
+            Self {
+                handle,
+                descriptor_pool,
+            }
+        }
+    }
+}
+
+impl Drop for DescriptorSet {
+    fn drop(&mut self) {
+        unsafe {
+            self.descriptor_pool
+                .device
+                .handle
+                .free_descriptor_sets(self.descriptor_pool.handle, &[self.handle])
+                .unwrap();
+        }
+    }
+}
+
+pub struct Sampler {
+    handle: vk::Sampler,
+    device: Arc<Device>,
+}
+
+impl Sampler {
+    pub fn new(device: Arc<Device>) -> Self {
+        let info = vk::SamplerCreateInfo::builder()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .build();
+        unsafe {
+            let handle = device.handle.create_sampler(&info, None).unwrap();
+            Self { handle, device }
+        }
+    }
+}
+
+impl Drop for Sampler {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_sampler(self.handle, None);
+        }
+    }
+}
+
+pub struct ShaderStage {
+    module: ShaderModule,
+    stage: vk::ShaderStageFlags,
+    entry_point: String,
+    entry_point_cstr: CString,
+}
+
+impl ShaderStage {
+    pub fn new(module: ShaderModule, stage: vk::ShaderStageFlags, entry_point: &str) -> Self {
+        let entry_point_cstr = CString::new(entry_point).unwrap();
+        Self {
+            module,
+            stage,
+            entry_point: entry_point.to_string(),
+            entry_point_cstr,
+        }
+    }
+
+    fn shader_stage_create_info(&self) -> vk::PipelineShaderStageCreateInfo {
+        vk::PipelineShaderStageCreateInfo::builder()
+            .module(self.module.handle)
+            .stage(self.stage)
+            .name(&self.entry_point_cstr)
+            .build()
     }
 }
 

@@ -2,7 +2,8 @@
 members = [
     "tracer",
     "safe-vk",
-    "xtask"
+    "xtask",
+    "egui-backend"
 ]
 
 

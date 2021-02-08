@@ -439,6 +439,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-backend"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "glob",
+ "rust-embed",
+ "shaderc",
+]
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -379,7 +379,11 @@ impl Buffer {
             .handle
             .create_buffer(
                 &vk::BufferCreateInfo::builder()
-                    .usage(buffer_usage | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                    .usage(
+                        buffer_usage
+                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                            | vk::BufferUsageFlags::TRANSFER_DST,
+                    )
                     .size(size.to_u64().unwrap())
                     .build(),
                 &vk_mem::AllocationCreateInfo {
@@ -412,13 +416,17 @@ impl Buffer {
         allocator: Arc<Allocator>,
         buffer_usage: vk::BufferUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
+        queue: &mut Queue,
+        command_pool: Arc<CommandPool>,
         data: I,
-    ) {
+    ) -> Self {
         let data = data.as_ref();
         let buffer = Self::new(
             allocator.clone(),
             data.len(),
-            buffer_usage | vk::BufferUsageFlags::TRANSFER_DST,
+            buffer_usage
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::TRANSFER_DST,
             memory_usage,
         );
         if buffer.is_device_local() {
@@ -429,8 +437,25 @@ impl Buffer {
                 vk_mem::MemoryUsage::CpuToGpu,
             );
             staging_buffer.copy_from(data);
-            // TODO: copy to buffer
+            let cmd_buf = CommandBuffer::new(command_pool);
+            cmd_buf.encode(|buf| {
+                buf.cmd_copy_buffer(
+                    &staging_buffer,
+                    &buffer,
+                    &[vk::BufferCopy::builder().size(data.len() as u64).build()],
+                );
+            });
+            let timeline_semaphore = TimelineSemaphore::new(allocator.device.clone());
+            queue.submit_timeline(
+                cmd_buf,
+                &[&timeline_semaphore],
+                &[0],
+                &[vk::PipelineStageFlags::ALL_COMMANDS],
+                &[1],
+            );
+            timeline_semaphore.wait_for(1);
         }
+        buffer
     }
 
     pub fn map(&mut self) -> *mut u8 {
@@ -777,16 +802,26 @@ impl CommandBuffer {
         }
     }
 
-    pub fn encode<F>(&self, func: F) -> Result<()>
+    pub fn encode<F>(&self, func: F)
     where
         F: FnOnce(&CommandBuffer),
     {
         unsafe {
             let device = &self.pool.device.handle;
-            device.begin_command_buffer(self.handle, &vk::CommandBufferBeginInfo::default())?;
+            device
+                .begin_command_buffer(self.handle, &vk::CommandBufferBeginInfo::default())
+                .unwrap();
             func(&self);
-            device.end_command_buffer(self.handle)?;
-            Ok(())
+            device.end_command_buffer(self.handle).unwrap();
+        }
+    }
+
+    pub fn cmd_copy_buffer(&self, src: &Buffer, dst: &Buffer, region: &[vk::BufferCopy]) {
+        unsafe {
+            self.pool
+                .device
+                .handle
+                .cmd_copy_buffer(self.handle, src.handle, dst.handle, region);
         }
     }
 }

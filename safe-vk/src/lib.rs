@@ -1,10 +1,14 @@
+#![feature(negative_impls)]
+
 use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0};
 
 use anyhow::Result;
 use ash::{extensions, vk};
+use vk::Handle;
 
+use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
 use std::ffi::{CStr, CString};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub mod name {
     pub mod instance {
@@ -483,6 +487,7 @@ impl Drop for Buffer {
 pub struct Queue {
     handle: vk::Queue,
     device: Arc<Device>,
+    command_buffers: HashMap<vk::CommandBuffer, (Arc<Mutex<bool>>, CommandBuffer)>,
 }
 
 impl Queue {
@@ -491,7 +496,72 @@ impl Queue {
             let handle = device
                 .handle
                 .get_device_queue(device.pdevice.queue_family_index, 0);
-            Self { handle, device }
+            Self {
+                handle,
+                device,
+                command_buffers: HashMap::new(),
+            }
+        }
+    }
+
+    pub fn clean_command_buffers(&mut self) {
+        let mut removal_list = Vec::with_capacity(self.command_buffers.len());
+        for (handle, (in_use, _)) in self.command_buffers.iter() {
+            if let Ok(in_use_locked) = in_use.try_lock() {
+                if !*in_use_locked {
+                    removal_list.push(handle.clone());
+                }
+            }
+        }
+        for removal in removal_list {
+            self.command_buffers.remove(&removal);
+        }
+    }
+
+    pub fn submit_timeline(
+        &mut self,
+        command_buffer: CommandBuffer,
+        timeline_semaphores: &[&TimelineSemaphore],
+        wait_values: &[u64],
+        wait_stages: &[vk::PipelineStageFlags],
+        signal_values: &[u64],
+    ) {
+        self.clean_command_buffers();
+        unsafe {
+            let semaphore_handles = timeline_semaphores
+                .iter()
+                .map(|s| s.handle)
+                .collect::<Vec<vk::Semaphore>>();
+
+            let submit_info = vk::SubmitInfo::builder()
+                .command_buffers(&[command_buffer.handle])
+                .wait_semaphores(&semaphore_handles)
+                .wait_dst_stage_mask(wait_stages)
+                .signal_semaphores(&semaphore_handles)
+                .push_next(
+                    &mut vk::TimelineSemaphoreSubmitInfo::builder()
+                        .wait_semaphore_values(wait_values)
+                        .signal_semaphore_values(signal_values)
+                        .build(),
+                )
+                .build();
+
+            let fence = Fence::new(self.device.clone(), false);
+            self.device
+                .handle
+                .queue_submit(self.handle, &[submit_info], fence.handle)
+                .unwrap();
+
+            let in_use = Arc::new(Mutex::new(true));
+            let in_use_signaler = in_use.clone();
+
+            tokio::task::spawn(async move {
+                fence.wait();
+                *in_use_signaler.lock().unwrap() = false;
+            });
+
+            self.command_buffers
+                .insert(command_buffer.handle, (in_use, command_buffer));
         }
     }
 }
@@ -663,6 +733,23 @@ impl Drop for CommandPool {
 pub struct CommandBuffer {
     handle: vk::CommandBuffer,
     pool: Arc<CommandPool>,
+    in_use: bool,
+}
+impl !Send for CommandBuffer {}
+impl !Sync for CommandBuffer {}
+
+impl PartialEq for CommandBuffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle
+    }
+}
+
+impl Eq for CommandBuffer {}
+
+impl core::hash::Hash for CommandBuffer {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.handle.as_raw());
+    }
 }
 
 impl CommandBuffer {
@@ -682,7 +769,11 @@ impl CommandBuffer {
                 .unwrap()
                 .to_owned();
 
-            Self { handle, pool }
+            Self {
+                handle,
+                pool,
+                in_use: false,
+            }
         }
     }
 
@@ -703,10 +794,14 @@ impl CommandBuffer {
 impl Drop for CommandBuffer {
     fn drop(&mut self) {
         unsafe {
-            self.pool
-                .device
-                .handle
-                .free_command_buffers(self.pool.handle, &[self.handle]);
+            if !self.in_use {
+                self.pool
+                    .device
+                    .handle
+                    .free_command_buffers(self.pool.handle, &[self.handle]);
+            } else {
+                panic!("don't");
+            }
         }
     }
 }

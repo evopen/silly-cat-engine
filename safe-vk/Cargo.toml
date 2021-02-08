@@ -15,6 +15,8 @@ raw-window-handle = "0.3.3"
 vk-mem = { version = "0.2.2", features = ["link_vulkan"] }
 num-traits = "0.2.14"
 tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
+bytemuck = { version = "1.5.0", features = ["derive"] }
+
 
 [dev-dependencies]
 winit = "0.24.0"

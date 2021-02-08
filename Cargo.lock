@@ -443,8 +443,11 @@ name = "egui-backend"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
+ "epi",
  "glob",
  "rust-embed",
+ "safe-vk",
  "shaderc",
 ]
 
@@ -470,6 +473,15 @@ dependencies = [
  "atomic_refcell",
  "emath",
  "rusttype",
+]
+
+[[package]]
+name = "epi"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e358eaf8b9898aa366bed1c0645dd439f272341e5cd1404c8a6a604e544ee065"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

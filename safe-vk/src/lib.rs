@@ -3,12 +3,14 @@
 use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0};
 
 use anyhow::Result;
-use ash::{extensions, vk};
+use ash::extensions;
 use vk::Handle;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
 use std::ffi::{CStr, CString};
 use std::sync::{Arc, Mutex};
+
+pub use ash::vk;
 
 pub mod name {
     pub mod instance {
@@ -1233,6 +1235,160 @@ impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
             self.device.handle.destroy_render_pass(self.handle, None);
+        }
+    }
+}
+
+pub struct DescriptorSetLayout {
+    handle: vk::DescriptorSetLayout,
+    device: Arc<Device>,
+}
+
+impl DescriptorSetLayout {
+    pub fn new(device: Arc<Device>, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
+        let info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(bindings)
+            .build();
+        unsafe {
+            let handle = device
+                .handle
+                .create_descriptor_set_layout(&info, None)
+                .unwrap();
+            Self { handle, device }
+        }
+    }
+}
+
+impl Drop for DescriptorSetLayout {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .handle
+                .destroy_descriptor_set_layout(self.handle, None);
+        }
+    }
+}
+
+pub struct PipelineLayout {
+    handle: vk::PipelineLayout,
+    device: Arc<Device>,
+}
+
+impl PipelineLayout {
+    pub fn new(device: Arc<Device>, set_layouts: &[&DescriptorSetLayout]) -> Self {
+        let set_layouts = set_layouts
+            .iter()
+            .map(|layout| layout.handle)
+            .collect::<Vec<_>>();
+        let info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(set_layouts.as_slice())
+            .build();
+        unsafe {
+            let handle = device.handle.create_pipeline_layout(&info, None).unwrap();
+            Self { handle, device }
+        }
+    }
+}
+
+impl Drop for PipelineLayout {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .handle
+                .destroy_pipeline_layout(self.handle, None);
+        }
+    }
+}
+
+pub struct GraphicsPipeline {
+    handle: vk::Pipeline,
+    layout: PipelineLayout,
+    device: Arc<Device>,
+}
+
+impl GraphicsPipeline {
+    pub fn new(
+        device: Arc<Device>,
+        layout: PipelineLayout,
+        stages: &[vk::PipelineShaderStageCreateInfo],
+        vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
+        input_assembly_state: &vk::PipelineInputAssemblyStateCreateInfo,
+        rasterization_state: &vk::PipelineRasterizationStateCreateInfo,
+        multisample_state: &vk::PipelineMultisampleStateCreateInfo,
+        depth_stencil_state: &vk::PipelineDepthStencilStateCreateInfo,
+        color_blend_state: &vk::PipelineColorBlendStateCreateInfo,
+    ) -> Self {
+        let info = vk::GraphicsPipelineCreateInfo::builder()
+            .layout(layout.handle)
+            .stages(stages)
+            .vertex_input_state(vertex_input_state)
+            .input_assembly_state(input_assembly_state)
+            .rasterization_state(rasterization_state)
+            .multisample_state(multisample_state)
+            .depth_stencil_state(depth_stencil_state)
+            .color_blend_state(color_blend_state)
+            .build();
+        unsafe {
+            let handle = device
+                .handle
+                .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None)
+                .unwrap()
+                .first()
+                .unwrap()
+                .to_owned();
+            Self {
+                handle,
+                device,
+                layout,
+            }
+        }
+    }
+
+    pub fn layout(&self) -> &PipelineLayout {
+        &self.layout
+    }
+}
+
+impl Drop for GraphicsPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_pipeline(self.handle, None);
+        }
+    }
+}
+
+pub struct ShaderModule {
+    handle: vk::ShaderModule,
+    device: Arc<Device>,
+}
+
+#[repr(C, align(32))]
+struct AlignedSpirv {
+    pub code: Vec<u8>,
+}
+
+impl ShaderModule {
+    pub fn new<P>(device: Arc<Device>, spv: P) -> Self
+    where
+        P: AsRef<[u8]>,
+    {
+        let aligned = AlignedSpirv {
+            code: spv.as_ref().to_vec(),
+        };
+        let info = vk::ShaderModuleCreateInfo::builder()
+            .code(bytemuck::cast_slice(aligned.code.as_slice()))
+            .build();
+        unsafe {
+            let handle = device.handle.create_shader_module(&info, None).unwrap();
+            Self { handle, device }
+        }
+    }
+}
+
+impl Drop for ShaderModule {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.handle.destroy_shader_module(self.handle, None);
         }
     }
 }

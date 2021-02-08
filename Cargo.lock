@@ -443,12 +443,15 @@ name = "egui-backend"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ash-window",
  "bytemuck",
  "epi",
  "glob",
  "rust-embed",
  "safe-vk",
  "shaderc",
+ "tokio",
+ "winit",
 ]
 
 [[package]]

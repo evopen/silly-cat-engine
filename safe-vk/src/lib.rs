@@ -222,6 +222,16 @@ impl Surface {
     }
 }
 
+impl Drop for Surface {
+    fn drop(&mut self) {
+        unsafe {
+            self.instance
+                .surface_loader
+                .destroy_surface(self.handle, None);
+        }
+    }
+}
+
 pub struct Device {
     handle: ash::Device,
     pdevice: Arc<PhysicalDevice>,
@@ -290,6 +300,14 @@ impl Device {
                 acceleration_structure_loader,
                 swapchain_loader,
             }
+        }
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        unsafe {
+            self.handle.destroy_device(None);
         }
     }
 }

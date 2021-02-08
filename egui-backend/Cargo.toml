@@ -16,3 +16,8 @@ bytemuck = { version = "1.5.0", features = ["derive"] }
 shaderc = "0.7.1"
 anyhow = "1.0.38"
 glob = "0.3.0"
+
+[dev-dependencies]
+winit = "0.24.0"
+tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
+ash-window = "0.5.0"

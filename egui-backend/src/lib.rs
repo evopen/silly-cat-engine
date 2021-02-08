@@ -45,7 +45,7 @@ struct UniformBuffer {
 }
 
 /// RenderPass to render a egui based GUI.
-pub struct Pass {
+pub struct UiPass {
     graphics_pipeline: safe_vk::GraphicsPipeline,
     index_buffers: Vec<safe_vk::Buffer>,
     vertex_buffers: Vec<safe_vk::Buffer>,
@@ -61,7 +61,7 @@ pub struct Pass {
     render_pass: safe_vk::RenderPass,
 }
 
-impl Pass {
+impl UiPass {
     /// Creates a new render pass to render a egui UI. `output_format` needs to be either `wgpu::TextureFormat::Rgba8UnormSrgb` or `wgpu::TextureFormat::Bgra8UnormSrgb`. Panics if it's not a Srgb format.
     pub fn new(allocator: Arc<safe_vk::Allocator>) -> Self {
         let device = allocator.device();

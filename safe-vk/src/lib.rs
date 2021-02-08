@@ -363,6 +363,7 @@ impl DescriptorPool {
             let info = vk::DescriptorPoolCreateInfo::builder()
                 .pool_sizes(descriptor_pool_size)
                 .max_sets(max_sets)
+                .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET)
                 .build();
             let handle = device.handle.create_descriptor_pool(&info, None).unwrap();
             Self { handle, device }
@@ -1335,18 +1336,22 @@ pub struct GraphicsPipeline {
     handle: vk::Pipeline,
     layout: Arc<PipelineLayout>,
     stages: Vec<Arc<ShaderStage>>,
+    render_pass: Arc<RenderPass>,
 }
 
 impl GraphicsPipeline {
     pub fn new(
         layout: Arc<PipelineLayout>,
         stages: Vec<Arc<ShaderStage>>,
+        render_pass: Arc<RenderPass>,
         vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
         input_assembly_state: &vk::PipelineInputAssemblyStateCreateInfo,
         rasterization_state: &vk::PipelineRasterizationStateCreateInfo,
         multisample_state: &vk::PipelineMultisampleStateCreateInfo,
         depth_stencil_state: &vk::PipelineDepthStencilStateCreateInfo,
         color_blend_state: &vk::PipelineColorBlendStateCreateInfo,
+        viewport_state: &vk::PipelineViewportStateCreateInfo,
+        dynamic_state: &vk::PipelineDynamicStateCreateInfo,
     ) -> Self {
         let device = &layout.device;
         let stage_create_infos = stages
@@ -1362,6 +1367,9 @@ impl GraphicsPipeline {
             .multisample_state(multisample_state)
             .depth_stencil_state(depth_stencil_state)
             .color_blend_state(color_blend_state)
+            .viewport_state(viewport_state)
+            .dynamic_state(dynamic_state)
+            .render_pass(render_pass.handle)
             .build();
         unsafe {
             let handle = device
@@ -1375,6 +1383,7 @@ impl GraphicsPipeline {
                 handle,
                 layout,
                 stages,
+                render_pass,
             }
         }
     }

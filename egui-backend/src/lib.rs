@@ -58,7 +58,7 @@ pub struct UiPass {
     pending_user_textures: Vec<(u64, egui::Texture)>,
     user_textures: Vec<Option<safe_vk::DescriptorSet>>,
     allocator: Arc<safe_vk::Allocator>,
-    render_pass: safe_vk::RenderPass,
+    render_pass: Arc<safe_vk::RenderPass>,
 }
 
 impl UiPass {
@@ -115,6 +115,27 @@ impl UiPass {
             ],
         ));
 
+        let render_pass = Arc::new(safe_vk::RenderPass::new(
+            device.clone(),
+            &vk::RenderPassCreateInfo::builder()
+                .attachments(&[vk::AttachmentDescription::builder()
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .load_op(vk::AttachmentLoadOp::LOAD)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+                    .build()])
+                .subpasses(&[vk::SubpassDescription::builder()
+                    .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+                    .color_attachments(&[vk::AttachmentReference::builder()
+                        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .attachment(0)
+                        .build()])
+                    .build()])
+                .build(),
+        ));
+
         let graphics_pipeline = safe_vk::GraphicsPipeline::new(
             pipeline_layout,
             vec![
@@ -129,6 +150,7 @@ impl UiPass {
                     "main",
                 )),
             ],
+            render_pass.clone(),
             &vk::PipelineVertexInputStateCreateInfo::builder()
                 .vertex_binding_descriptions(&[vk::VertexInputBindingDescription::builder()
                     .stride(5 * 4)
@@ -150,7 +172,7 @@ impl UiPass {
                         .build(),
                     vk::VertexInputAttributeDescription::builder()
                         .binding(0)
-                        .location(0)
+                        .location(2)
                         .format(vk::Format::R32_UINT)
                         .offset(4 * 4)
                         .build(),
@@ -163,6 +185,7 @@ impl UiPass {
                 .cull_mode(vk::CullModeFlags::NONE)
                 .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
                 .polygon_mode(vk::PolygonMode::FILL)
+                .line_width(1.0)
                 .build(),
             &vk::PipelineMultisampleStateCreateInfo::builder()
                 .rasterization_samples(vk::SampleCountFlags::TYPE_1)
@@ -180,6 +203,12 @@ impl UiPass {
                     .color_write_mask(vk::ColorComponentFlags::all())
                     .build()])
                 .build(),
+            &vk::PipelineViewportStateCreateInfo::builder()
+                .viewport_count(1)
+                .scissor_count(1),
+            &vk::PipelineDynamicStateCreateInfo::builder()
+                .dynamic_states(&[vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR])
+                .build(),
         );
 
         let descriptor_pool = Arc::new(safe_vk::DescriptorPool::new(
@@ -193,20 +222,6 @@ impl UiPass {
 
         let uniform_descriptor_set =
             safe_vk::DescriptorSet::new(descriptor_pool.clone(), &uniform_descriptor_set_layout);
-
-        let render_pass = safe_vk::RenderPass::new(
-            device.clone(),
-            &vk::RenderPassCreateInfo::builder()
-                .attachments(&[vk::AttachmentDescription::builder()
-                    .format(vk::Format::B8G8R8A8_UNORM)
-                    .samples(vk::SampleCountFlags::TYPE_1)
-                    .load_op(vk::AttachmentLoadOp::LOAD)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-                    .build()])
-                .build(),
-        );
 
         Self {
             graphics_pipeline,

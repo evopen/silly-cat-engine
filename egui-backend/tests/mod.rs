@@ -31,6 +31,8 @@ fn test_all() {
         println!("swapchain images created");
 
         let allocator = Arc::new(Allocator::new(device.clone()));
+
+        let ui_pass = UiPass::new(allocator.clone());
     });
 }
 

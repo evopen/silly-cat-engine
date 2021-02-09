@@ -791,6 +791,104 @@ impl Drop for CommandPool {
     }
 }
 
+pub trait GraphicsPipelineRecorder: PipelineRecorder {
+    fn bind_index_buffer(&mut self, buffer: Arc<Buffer>, offset: u64, index_type: vk::IndexType);
+    fn set_scissor(&self, scissors: &[vk::Rect2D]);
+    fn bind_vertex_buffer(&mut self, buffers: Vec<Arc<Buffer>>, offsets: &[u64]);
+    fn draw_indexed(&self, index_count: u32, instance_count: u32);
+}
+
+pub trait PipelineRecorder {
+    fn bind_descriptor_sets(
+        &mut self,
+        descriptor_sets: Vec<Arc<DescriptorSet>>,
+        layout: &PipelineLayout,
+    );
+}
+
+pub trait GeneralRecorder {}
+
+impl<'a> PipelineRecorder for CommandRecorder<'a> {
+    fn bind_descriptor_sets(
+        &mut self,
+        descriptor_sets: Vec<Arc<DescriptorSet>>,
+        layout: &PipelineLayout,
+    ) {
+        unsafe {
+            let descriptor_set_handles = descriptor_sets
+                .iter()
+                .map(|set| set.handle)
+                .collect::<Vec<_>>();
+            self.device().handle.cmd_bind_descriptor_sets(
+                self.command_buffer.handle,
+                self.bind_point.unwrap(),
+                layout.handle,
+                0,
+                descriptor_set_handles.as_slice(),
+                &[],
+            );
+        }
+
+        descriptor_sets
+            .into_iter()
+            .for_each(|set| self.command_buffer.resources.push(set));
+    }
+}
+
+impl<'a> GraphicsPipelineRecorder for CommandRecorder<'a> {
+    fn bind_index_buffer(&mut self, buffer: Arc<Buffer>, offset: u64, index_type: vk::IndexType) {
+        unsafe {
+            self.command_buffer
+                .pool
+                .device
+                .handle
+                .cmd_bind_index_buffer(
+                    self.command_buffer.handle,
+                    buffer.handle,
+                    offset,
+                    index_type,
+                );
+        }
+        self.command_buffer.resources.push(buffer);
+    }
+
+    fn set_scissor(&self, scissors: &[vk::Rect2D]) {
+        unsafe {
+            self.device()
+                .handle
+                .cmd_set_scissor(self.command_buffer.handle, 0, scissors);
+        }
+    }
+
+    fn bind_vertex_buffer(&mut self, buffers: Vec<Arc<Buffer>>, offsets: &[u64]) {
+        let buffer_handles = buffers.iter().map(|b| b.handle).collect::<Vec<_>>();
+        unsafe {
+            self.device().handle.cmd_bind_vertex_buffers(
+                self.command_buffer.handle,
+                0,
+                buffer_handles.as_slice(),
+                offsets,
+            );
+        }
+        buffers
+            .into_iter()
+            .for_each(|b| self.command_buffer.resources.push(b));
+    }
+
+    fn draw_indexed(&self, index_count: u32, instance_count: u32) {
+        unsafe {
+            self.device().handle.cmd_draw_indexed(
+                self.command_buffer.handle,
+                index_count,
+                instance_count,
+                0,
+                0,
+                0,
+            );
+        }
+    }
+}
+
 pub struct CommandRecorder<'a> {
     command_buffer: &'a mut CommandBuffer,
     bind_point: Option<vk::PipelineBindPoint>,
@@ -849,7 +947,7 @@ impl<'a> CommandRecorder<'a> {
 
     pub fn bind_graphics_pipeline<I>(&mut self, pipeline: Arc<GraphicsPipeline>, f: I)
     where
-        I: FnOnce(&mut CommandRecorder, &dyn Pipeline),
+        I: FnOnce(&mut dyn GraphicsPipelineRecorder, &dyn Pipeline),
     {
         unsafe {
             self.device().handle.cmd_bind_pipeline(
@@ -862,88 +960,25 @@ impl<'a> CommandRecorder<'a> {
         // self.command_buffer.resources.push(pipeline);
     }
 
-    pub fn bind_descriptor_sets(
-        &mut self,
-        mut descriptor_sets: Vec<Arc<DescriptorSet>>,
-        layout: &PipelineLayout,
-    ) {
-        unsafe {
-            let descriptor_set_handles = descriptor_sets
-                .iter()
-                .map(|set| set.handle)
-                .collect::<Vec<_>>();
-            self.device().handle.cmd_bind_descriptor_sets(
-                self.command_buffer.handle,
-                self.bind_point.unwrap(),
-                layout.handle,
-                0,
-                descriptor_set_handles.as_slice(),
-                &[],
-            );
-        }
-
-        while !descriptor_sets.is_empty() {
-            self.command_buffer
-                .resources
-                .push(descriptor_sets.pop().unwrap());
-        }
-    }
-
-    pub fn bind_index_buffer(
-        &mut self,
-        buffer: Arc<Buffer>,
-        offset: u64,
-        index_type: vk::IndexType,
-    ) {
-        unsafe {
-            self.device().handle.cmd_bind_index_buffer(
-                self.command_buffer.handle,
-                buffer.handle,
-                offset,
-                index_type,
-            );
-        }
-        self.command_buffer.resources.push(buffer);
-    }
-
-    pub fn bind_vertex_buffer(&mut self, buffers: Vec<Arc<Buffer>>, offsets: &[u64]) {
-        let buffer_handles = buffers.iter().map(|b| b.handle).collect::<Vec<_>>();
-        unsafe {
-            self.device().handle.cmd_bind_vertex_buffers(
-                self.command_buffer.handle,
-                0,
-                buffer_handles.as_slice(),
-                offsets,
-            );
-        }
-        buffers
-            .into_iter()
-            .for_each(|b| self.command_buffer.resources.push(b));
-    }
-
-    pub fn set_scissor(&self, scissors: &[vk::Rect2D]) {
-        unsafe {
-            self.device()
-                .handle
-                .cmd_set_scissor(self.command_buffer.handle, 0, scissors);
-        }
-    }
-
-    pub fn draw_indexed(&self, index_count: u32, instance_count: u32) {
-        unsafe {
-            self.device().handle.cmd_draw_indexed(
-                self.command_buffer.handle,
-                index_count,
-                instance_count,
-                0,
-                0,
-                0,
-            );
-        }
-    }
-
     fn device(&self) -> &Device {
         &self.command_buffer.pool.device
+    }
+
+    pub fn copy_buffer_to_image(
+        &mut self,
+        src: Arc<Buffer>,
+        dst: Arc<Image>,
+        regions: &[vk::BufferImageCopy],
+    ) {
+        unsafe {
+            self.device().handle.cmd_copy_buffer_to_image(
+                self.command_buffer.handle,
+                src.handle,
+                dst.handle,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                regions,
+            );
+        }
     }
 }
 

@@ -172,5 +172,14 @@ fn test_all() {
             bytemuck::cast_slice(&matrix),
         );
         assert_eq!(buffer.size(), 12 * 4);
+
+        let image = Arc::new(Image::new(
+            allocator.clone(),
+            800,
+            600,
+            vk::ImageUsageFlags::SAMPLED,
+            MemoryUsage::GpuOnly,
+        ));
+        let image_view = ImageView::new(image.clone());
     });
 }

@@ -8,7 +8,7 @@ use bytemuck::{Pod, Zeroable};
 
 use shaders::Shaders;
 
-use safe_vk::{vk, CommandBuffer, Framebuffer};
+use safe_vk::{vk, CommandBuffer, Framebuffer, ImageView};
 use safe_vk::{Image, MemoryUsage};
 
 /// Enum for selecting the right buffer type.
@@ -243,22 +243,17 @@ impl UiPass {
     pub fn execute(
         &mut self,
         command_buffer: &mut CommandBuffer,
-        color_attachment: &Image,
+        color_attachment: Arc<Image>,
         paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
     ) {
         let device = self.allocator.device();
-        let image_view = color_attachment.view();
+        let image_view = Arc::new(ImageView::new(color_attachment.clone()));
         let framebuffer = Framebuffer::new(
-            sdevice.clone(),
             self.render_pass.clone(),
-            &vk::FramebufferCreateInfo::builder()
-                .attachments(&[image_view])
-                .render_pass(self.render_pass.handle())
-                .layers(1)
-                .width(screen_descriptor.physical_width)
-                .height(screen_descriptor.physical_height)
-                .build(),
+            screen_descriptor.physical_width,
+            screen_descriptor.physical_height,
+            vec![image_view.clone()],
         );
 
         let scale_factor = screen_descriptor.scale_factor;

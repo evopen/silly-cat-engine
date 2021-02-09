@@ -872,6 +872,7 @@ pub struct Swapchain {
     device: Arc<Device>,
     surface: Arc<Surface>,
     extent: vk::Extent2D,
+    format: vk::Format,
 }
 
 impl Swapchain {
@@ -886,11 +887,13 @@ impl Swapchain {
                 .get_physical_device_surface_formats(device.pdevice.handle, surface.handle)
                 .unwrap()[0];
 
+            let format = surface_format.format;
+
             let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
                 .surface(surface.handle)
                 .min_image_count(2)
                 .image_color_space(surface_format.color_space)
-                .image_format(surface_format.format)
+                .image_format(format)
                 .image_extent(surface_capabilities.current_extent)
                 .image_usage(
                     vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
@@ -911,6 +914,7 @@ impl Swapchain {
                 device,
                 surface,
                 extent: surface_capabilities.current_extent,
+                format,
             }
         }
     }
@@ -990,6 +994,7 @@ pub struct Image {
     width: u32,
     height: u32,
     layout: vk::ImageLayout,
+    format: vk::Format,
 }
 
 impl Image {
@@ -1000,12 +1005,13 @@ impl Image {
         image_usage: vk::ImageUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
     ) -> Self {
+        let format = vk::Format::B8G8R8A8_UNORM;
         let (handle, allocation, allocation_info) = allocator
             .handle
             .create_image(
                 &vk::ImageCreateInfo::builder()
                     .image_type(vk::ImageType::TYPE_2D)
-                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .format(format)
                     .extent(vk::Extent3D {
                         width,
                         height,
@@ -1038,6 +1044,7 @@ impl Image {
             height,
             layout: vk::ImageLayout::UNDEFINED,
             image_type,
+            format,
         }
     }
 
@@ -1059,6 +1066,7 @@ impl Image {
                     width: swapchain.extent.width,
                     height: swapchain.extent.height,
                     layout: vk::ImageLayout::UNDEFINED,
+                    format: swapchain.format,
                 })
                 .collect::<Vec<_>>();
 
@@ -1124,8 +1132,16 @@ impl ImageView {
                 .handle
                 .create_image_view(
                     &vk::ImageViewCreateInfo::builder()
+                        .components(
+                            vk::ComponentMapping::builder()
+                                .r(vk::ComponentSwizzle::IDENTITY)
+                                .g(vk::ComponentSwizzle::IDENTITY)
+                                .b(vk::ComponentSwizzle::IDENTITY)
+                                .a(vk::ComponentSwizzle::IDENTITY)
+                                .build(),
+                        )
                         .view_type(vk::ImageViewType::TYPE_2D)
-                        .format(vk::Format::B8G8R8A8_UNORM)
+                        .format(image.format)
                         .subresource_range(
                             vk::ImageSubresourceRange::builder()
                                 .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -1218,22 +1234,41 @@ fn cmd_set_image_layout(
 
 pub struct Framebuffer {
     handle: vk::Framebuffer,
-    device: Arc<Device>,
+    render_pass: Arc<RenderPass>,
+    attachments: Vec<Arc<ImageView>>,
 }
 
 impl Framebuffer {
-    pub fn new(device: Arc<Device>, render_pass: Arc<RenderPass>) -> Self {
+    pub fn new(
+        render_pass: Arc<RenderPass>,
+        width: u32,
+        height: u32,
+        attachments: Vec<Arc<ImageView>>,
+    ) -> Self {
         unsafe {
+            let device = &render_pass.device;
+            let attachment_handles = attachments
+                .iter()
+                .map(|view| view.handle)
+                .collect::<Vec<_>>();
             let handle = device
                 .handle
                 .create_framebuffer(
                     &vk::FramebufferCreateInfo::builder()
+                        .width(width)
+                        .height(height)
+                        .layers(1)
+                        .attachments(attachment_handles.as_slice())
                         .render_pass(render_pass.handle)
                         .build(),
                     None,
                 )
                 .unwrap();
-            Self { handle, device }
+            Self {
+                handle,
+                render_pass,
+                attachments,
+            }
         }
     }
 

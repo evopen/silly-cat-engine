@@ -391,6 +391,16 @@ pub struct Buffer {
     allocation_info: vk_mem::AllocationInfo,
 }
 
+impl std::fmt::Debug for Buffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Buffer")
+            .field("handle", &self.handle)
+            .field("size", &self.size)
+            .field("mapped", &self.mapped)
+            .finish()
+    }
+}
+
 impl Buffer {
     pub fn new<I>(
         allocator: Arc<Allocator>,
@@ -447,27 +457,27 @@ impl Buffer {
         data: I,
     ) -> Self {
         let data = data.as_ref();
-        let buffer = Self::new(
+        let buffer = Arc::new(Self::new(
             allocator.clone(),
             data.len(),
             buffer_usage
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::TRANSFER_DST,
             memory_usage,
-        );
+        ));
         if buffer.is_device_local() {
-            let staging_buffer = Self::new(
+            let staging_buffer = Arc::new(Self::new(
                 allocator.clone(),
                 data.len(),
                 vk::BufferUsageFlags::TRANSFER_SRC,
                 vk_mem::MemoryUsage::CpuToGpu,
-            );
+            ));
             staging_buffer.copy_from(data);
-            let cmd_buf = CommandBuffer::new(command_pool);
-            cmd_buf.encode(|buf| {
-                buf.cmd_copy_buffer(
-                    &staging_buffer,
-                    &buffer,
+            let mut cmd_buf = CommandBuffer::new(command_pool);
+            cmd_buf.encode(|manager| {
+                manager.copy_buffer(
+                    staging_buffer,
+                    buffer.clone(),
                     &[vk::BufferCopy::builder().size(data.len() as u64).build()],
                 );
             });
@@ -481,7 +491,7 @@ impl Buffer {
             );
             timeline_semaphore.wait_for(1);
         }
-        buffer
+        Arc::try_unwrap(buffer).unwrap()
     }
 
     pub fn map(&mut self) -> *mut u8 {
@@ -781,10 +791,38 @@ impl Drop for CommandPool {
     }
 }
 
+pub struct CommandRecorder<'a> {
+    command_buffer: &'a mut CommandBuffer,
+}
+
+impl<'a> CommandRecorder<'a> {
+    pub fn copy_buffer(&mut self, src: Arc<Buffer>, dst: Arc<Buffer>, region: &[vk::BufferCopy]) {
+        unsafe {
+            self.device().handle.cmd_copy_buffer(
+                self.command_buffer.handle,
+                src.handle,
+                dst.handle,
+                region,
+            );
+            self.command_buffer.resources.push(src);
+            self.command_buffer.resources.push(dst);
+        }
+    }
+
+    fn device(&self) -> &Device {
+        &self.command_buffer.pool.device
+    }
+}
+
+trait Resource {}
+
+impl Resource for Buffer {}
+
 pub struct CommandBuffer {
     handle: vk::CommandBuffer,
     pool: Arc<CommandPool>,
     in_use: bool,
+    resources: Vec<Arc<dyn Resource>>,
 }
 impl !Send for CommandBuffer {}
 impl !Sync for CommandBuffer {}
@@ -824,31 +862,30 @@ impl CommandBuffer {
                 handle,
                 pool,
                 in_use: false,
+                resources: Vec::new(),
             }
         }
     }
 
-    pub fn encode<F>(&self, func: F)
+    pub fn encode<F>(&mut self, func: F)
     where
-        F: FnOnce(&CommandBuffer),
+        F: FnOnce(&mut CommandRecorder),
     {
         unsafe {
-            let device = &self.pool.device.handle;
+            let device = self.pool.device.handle.clone();
             device
                 .begin_command_buffer(self.handle, &vk::CommandBufferBeginInfo::default())
                 .unwrap();
-            func(&self);
+            let mut manager = CommandRecorder {
+                command_buffer: self,
+            };
+            func(&mut manager);
             device.end_command_buffer(self.handle).unwrap();
         }
     }
 
-    pub fn cmd_copy_buffer(&self, src: &Buffer, dst: &Buffer, region: &[vk::BufferCopy]) {
-        unsafe {
-            self.pool
-                .device
-                .handle
-                .cmd_copy_buffer(self.handle, src.handle, dst.handle, region);
-        }
+    fn free_resources(&mut self) {
+        self.resources.clear();
     }
 }
 
@@ -1279,8 +1316,9 @@ impl Framebuffer {
 
 impl Drop for Framebuffer {
     fn drop(&mut self) {
+        let device = &self.render_pass.device;
         unsafe {
-            self.device.handle.destroy_framebuffer(self.handle, None);
+            device.handle.destroy_framebuffer(self.handle, None);
         }
     }
 }

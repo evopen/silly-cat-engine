@@ -793,6 +793,7 @@ impl Drop for CommandPool {
 
 pub struct CommandRecorder<'a> {
     command_buffer: &'a mut CommandBuffer,
+    bind_point: Option<vk::PipelineBindPoint>,
 }
 
 impl<'a> CommandRecorder<'a> {
@@ -809,6 +810,138 @@ impl<'a> CommandRecorder<'a> {
         }
     }
 
+    pub fn begin_render_pass<I>(
+        &mut self,
+        render_pass: Arc<RenderPass>,
+        framebuffer: Arc<Framebuffer>,
+        f: I,
+    ) where
+        I: FnOnce(&mut CommandRecorder),
+    {
+        unsafe {
+            let info = vk::RenderPassBeginInfo::builder()
+                .render_pass(render_pass.handle)
+                .framebuffer(framebuffer.handle)
+                .render_area(
+                    vk::Rect2D::builder()
+                        .extent(vk::Extent2D {
+                            width: framebuffer.width,
+                            height: framebuffer.height,
+                        })
+                        .build(),
+                )
+                .build();
+            self.device().handle.cmd_begin_render_pass(
+                self.command_buffer.handle,
+                &info,
+                vk::SubpassContents::INLINE,
+            );
+
+            f(self);
+
+            self.device()
+                .handle
+                .cmd_end_render_pass(self.command_buffer.handle);
+            self.command_buffer.resources.push(render_pass);
+            self.command_buffer.resources.push(framebuffer);
+        }
+    }
+
+    pub fn bind_graphics_pipeline<I>(&mut self, pipeline: Arc<GraphicsPipeline>, f: I)
+    where
+        I: FnOnce(&mut CommandRecorder, &dyn Pipeline),
+    {
+        unsafe {
+            self.device().handle.cmd_bind_pipeline(
+                self.command_buffer.handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline.handle,
+            );
+            f(self, pipeline.as_ref());
+        }
+        // self.command_buffer.resources.push(pipeline);
+    }
+
+    pub fn bind_descriptor_sets(
+        &mut self,
+        mut descriptor_sets: Vec<Arc<DescriptorSet>>,
+        layout: &PipelineLayout,
+    ) {
+        unsafe {
+            let descriptor_set_handles = descriptor_sets
+                .iter()
+                .map(|set| set.handle)
+                .collect::<Vec<_>>();
+            self.device().handle.cmd_bind_descriptor_sets(
+                self.command_buffer.handle,
+                self.bind_point.unwrap(),
+                layout.handle,
+                0,
+                descriptor_set_handles.as_slice(),
+                &[],
+            );
+        }
+
+        while !descriptor_sets.is_empty() {
+            self.command_buffer
+                .resources
+                .push(descriptor_sets.pop().unwrap());
+        }
+    }
+
+    pub fn bind_index_buffer(
+        &mut self,
+        buffer: Arc<Buffer>,
+        offset: u64,
+        index_type: vk::IndexType,
+    ) {
+        unsafe {
+            self.device().handle.cmd_bind_index_buffer(
+                self.command_buffer.handle,
+                buffer.handle,
+                offset,
+                index_type,
+            );
+        }
+        self.command_buffer.resources.push(buffer);
+    }
+
+    pub fn bind_vertex_buffer(&mut self, buffers: Vec<Arc<Buffer>>, offsets: &[u64]) {
+        let buffer_handles = buffers.iter().map(|b| b.handle).collect::<Vec<_>>();
+        unsafe {
+            self.device().handle.cmd_bind_vertex_buffers(
+                self.command_buffer.handle,
+                0,
+                buffer_handles.as_slice(),
+                offsets,
+            );
+        }
+        buffers
+            .into_iter()
+            .for_each(|b| self.command_buffer.resources.push(b));
+    }
+
+    pub fn set_scissor(&self, scissors: &[vk::Rect2D]) {
+        unsafe {
+            self.device()
+                .handle
+                .cmd_set_scissor(self.command_buffer.handle, 0, scissors);
+        }
+    }
+
+    pub fn draw_indexed(&self, index_count: u32, instance_count: u32) {
+        unsafe {
+            self.device().handle.cmd_draw_indexed(
+                self.command_buffer.handle,
+                index_count,
+                instance_count,
+                0,
+                0,
+                0,
+            );
+        }
+    }
+
     fn device(&self) -> &Device {
         &self.command_buffer.pool.device
     }
@@ -817,6 +950,11 @@ impl<'a> CommandRecorder<'a> {
 trait Resource {}
 
 impl Resource for Buffer {}
+impl Resource for RenderPass {}
+impl Resource for Framebuffer {}
+impl Resource for GraphicsPipeline {}
+impl Resource for DescriptorSet {}
+impl Resource for PipelineLayout {}
 
 pub struct CommandBuffer {
     handle: vk::CommandBuffer,
@@ -878,6 +1016,7 @@ impl CommandBuffer {
                 .unwrap();
             let mut manager = CommandRecorder {
                 command_buffer: self,
+                bind_point: None,
             };
             func(&mut manager);
             device.end_command_buffer(self.handle).unwrap();
@@ -1273,6 +1412,8 @@ pub struct Framebuffer {
     handle: vk::Framebuffer,
     render_pass: Arc<RenderPass>,
     attachments: Vec<Arc<ImageView>>,
+    width: u32,
+    height: u32,
 }
 
 impl Framebuffer {
@@ -1305,6 +1446,8 @@ impl Framebuffer {
                 handle,
                 render_pass,
                 attachments,
+                width,
+                height,
             }
         }
     }
@@ -1410,6 +1553,10 @@ impl Drop for PipelineLayout {
     }
 }
 
+pub trait Pipeline {
+    fn layout(&self) -> &Arc<PipelineLayout>;
+}
+
 pub struct GraphicsPipeline {
     handle: vk::Pipeline,
     layout: Arc<PipelineLayout>,
@@ -1465,10 +1612,6 @@ impl GraphicsPipeline {
             }
         }
     }
-
-    pub fn layout(&self) -> &PipelineLayout {
-        &self.layout
-    }
 }
 
 impl Drop for GraphicsPipeline {
@@ -1479,6 +1622,12 @@ impl Drop for GraphicsPipeline {
                 .handle
                 .destroy_pipeline(self.handle, None);
         }
+    }
+}
+
+impl Pipeline for GraphicsPipeline {
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.layout
     }
 }
 

@@ -986,7 +986,6 @@ enum ImageType {
 
 pub struct Image {
     handle: vk::Image,
-    view: vk::ImageView,
     image_type: ImageType,
     width: u32,
     height: u32,
@@ -1001,68 +1000,44 @@ impl Image {
         image_usage: vk::ImageUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
     ) -> Self {
-        unsafe {
-            let (handle, allocation, allocation_info) = allocator
-                .handle
-                .create_image(
-                    &vk::ImageCreateInfo::builder()
-                        .image_type(vk::ImageType::TYPE_2D)
-                        .format(vk::Format::B8G8R8A8_UNORM)
-                        .extent(vk::Extent3D {
-                            width,
-                            height,
-                            depth: 1,
-                        })
-                        .samples(vk::SampleCountFlags::TYPE_1)
-                        .mip_levels(1)
-                        .array_layers(1)
-                        .tiling(vk::ImageTiling::OPTIMAL)
-                        .usage(image_usage)
-                        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-                        .initial_layout(vk::ImageLayout::UNDEFINED)
-                        .build(),
-                    &vk_mem::AllocationCreateInfo {
-                        usage: memory_usage,
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
-            let view = allocator
-                .device
-                .handle
-                .create_image_view(
-                    &vk::ImageViewCreateInfo::builder()
-                        .view_type(vk::ImageViewType::TYPE_2D)
-                        .format(vk::Format::B8G8R8A8_UNORM)
-                        .subresource_range(
-                            vk::ImageSubresourceRange::builder()
-                                .aspect_mask(vk::ImageAspectFlags::COLOR)
-                                .base_mip_level(0)
-                                .level_count(1)
-                                .base_array_layer(0)
-                                .layer_count(1)
-                                .build(),
-                        )
-                        .image(handle)
-                        .build(),
-                    None,
-                )
-                .unwrap();
+        let (handle, allocation, allocation_info) = allocator
+            .handle
+            .create_image(
+                &vk::ImageCreateInfo::builder()
+                    .image_type(vk::ImageType::TYPE_2D)
+                    .format(vk::Format::B8G8R8A8_UNORM)
+                    .extent(vk::Extent3D {
+                        width,
+                        height,
+                        depth: 1,
+                    })
+                    .samples(vk::SampleCountFlags::TYPE_1)
+                    .mip_levels(1)
+                    .array_layers(1)
+                    .tiling(vk::ImageTiling::OPTIMAL)
+                    .usage(image_usage)
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE)
+                    .initial_layout(vk::ImageLayout::UNDEFINED)
+                    .build(),
+                &vk_mem::AllocationCreateInfo {
+                    usage: memory_usage,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
-            let image_type = ImageType::Allocated {
-                allocator,
-                allocation,
-                allocation_info,
-            };
+        let image_type = ImageType::Allocated {
+            allocator,
+            allocation,
+            allocation_info,
+        };
 
-            Self {
-                handle,
-                view,
-                width,
-                height,
-                layout: vk::ImageLayout::UNDEFINED,
-                image_type,
-            }
+        Self {
+            handle,
+            width,
+            height,
+            layout: vk::ImageLayout::UNDEFINED,
+            image_type,
         }
     }
 
@@ -1074,37 +1049,10 @@ impl Image {
                 .get_swapchain_images(swapchain.handle)
                 .unwrap();
 
-            let views = images
-                .iter()
-                .map(|handle| {
-                    device
-                        .handle
-                        .create_image_view(
-                            &vk::ImageViewCreateInfo::builder()
-                                .view_type(vk::ImageViewType::TYPE_2D)
-                                .format(vk::Format::B8G8R8A8_UNORM)
-                                .subresource_range(
-                                    vk::ImageSubresourceRange::builder()
-                                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                                        .base_mip_level(0)
-                                        .level_count(1)
-                                        .base_array_layer(0)
-                                        .layer_count(1)
-                                        .build(),
-                                )
-                                .image(*handle)
-                                .build(),
-                            None,
-                        )
-                        .unwrap()
-                })
-                .collect::<Vec<_>>();
             let results = images
                 .into_iter()
-                .zip(views)
-                .map(|(handle, view)| Self {
+                .map(|handle| Self {
                     handle,
-                    view,
                     image_type: ImageType::Swapchain {
                         swapchain: swapchain.clone(),
                     },
@@ -1156,6 +1104,55 @@ impl Drop for Image {
                 allocator.handle.destroy_image(self.handle, &allocation);
             }
             ImageType::Swapchain { .. } => {}
+        }
+    }
+}
+
+pub struct ImageView {
+    handle: vk::ImageView,
+    image: Arc<Image>,
+}
+
+impl ImageView {
+    pub fn new(image: Arc<Image>) -> Self {
+        unsafe {
+            let device = match &image.image_type {
+                ImageType::Allocated { allocator, .. } => &allocator.device,
+                ImageType::Swapchain { swapchain } => &swapchain.device,
+            };
+            let handle = device
+                .handle
+                .create_image_view(
+                    &vk::ImageViewCreateInfo::builder()
+                        .view_type(vk::ImageViewType::TYPE_2D)
+                        .format(vk::Format::B8G8R8A8_UNORM)
+                        .subresource_range(
+                            vk::ImageSubresourceRange::builder()
+                                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                                .base_mip_level(0)
+                                .level_count(1)
+                                .base_array_layer(0)
+                                .layer_count(1)
+                                .build(),
+                        )
+                        .image(image.handle)
+                        .build(),
+                    None,
+                )
+                .unwrap();
+            Self { image, handle }
+        }
+    }
+}
+
+impl Drop for ImageView {
+    fn drop(&mut self) {
+        unsafe {
+            let device = match &self.image.image_type {
+                ImageType::Allocated { allocator, .. } => &allocator.device,
+                ImageType::Swapchain { swapchain } => &swapchain.device,
+            };
+            device.handle.destroy_image_view(self.handle, None);
         }
     }
 }

@@ -6,6 +6,7 @@ use anyhow::Result;
 use ash::extensions;
 use vk::Handle;
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
 use std::ffi::{CStr, CString};
 use std::sync::{Arc, Mutex};
@@ -980,6 +981,21 @@ impl<'a> CommandRecorder<'a> {
             );
         }
     }
+
+    unsafe fn copy_buffer_to_image_raw(
+        &mut self,
+        src: &Buffer,
+        dst: &Image,
+        regions: &[vk::BufferImageCopy],
+    ) {
+        self.device().handle.cmd_copy_buffer_to_image(
+            self.command_buffer.handle,
+            src.handle,
+            dst.handle,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            regions,
+        );
+    }
 }
 
 trait Resource {}
@@ -1259,6 +1275,54 @@ impl Image {
         }
     }
 
+    pub fn copy_from_buffer(
+        &self,
+        buffer: &Buffer,
+        queue: &mut Queue,
+        command_pool: Arc<CommandPool>,
+    ) {
+        let device = self.device();
+        let mut command_buffer = CommandBuffer::new(command_pool.clone());
+
+        unsafe {
+            command_buffer.encode(|recorder| {
+                recorder.copy_buffer_to_image_raw(
+                    buffer,
+                    self,
+                    &[vk::BufferImageCopy::builder()
+                        .image_extent(vk::Extent3D {
+                            width: self.width,
+                            height: self.height,
+                            depth: 1,
+                        })
+                        .image_offset(vk::Offset3D::default())
+                        .image_subresource(
+                            vk::ImageSubresourceLayers::builder()
+                                .layer_count(1)
+                                .base_array_layer(0)
+                                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                                .mip_level(0)
+                                .build(),
+                        )
+                        .buffer_offset(0)
+                        .buffer_image_height(0)
+                        .buffer_row_length(0)
+                        .build()],
+                );
+            });
+        }
+
+        let semaphore = TimelineSemaphore::new(device.clone());
+        queue.submit_timeline(
+            command_buffer,
+            &[&semaphore],
+            &[0],
+            &[vk::PipelineStageFlags::ALL_COMMANDS],
+            &[1],
+        );
+        semaphore.wait_for(1);
+    }
+
     pub fn from_swapchain(swapchain: Arc<Swapchain>) -> Vec<Self> {
         unsafe {
             let device = swapchain.device.as_ref();
@@ -1285,9 +1349,13 @@ impl Image {
         }
     }
 
-    // pub fn view(&self) -> vk::ImageView {
-    //     self.view
-    // }
+    fn device(&self) -> &Arc<Device> {
+        let device = match self.image_type.borrow() {
+            ImageType::Allocated { allocator, .. } => &allocator.device,
+            ImageType::Swapchain { swapchain } => &swapchain.device,
+        };
+        device
+    }
 
     pub fn cmd_set_layout(
         &mut self,

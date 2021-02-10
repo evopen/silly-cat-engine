@@ -8,7 +8,10 @@ use bytemuck::{Pod, Zeroable};
 
 use shaders::Shaders;
 
-use safe_vk::{vk, CommandBuffer, CommandRecorder, DescriptorSet, Framebuffer, ImageView};
+use safe_vk::{
+    vk, Buffer, CommandBuffer, CommandPool, CommandRecorder, DescriptorPool, DescriptorSet,
+    Framebuffer, ImageView, Queue,
+};
 use safe_vk::{Image, MemoryUsage};
 
 use safe_vk::Pipeline;
@@ -53,7 +56,7 @@ pub struct UiPass {
     vertex_buffers: Vec<Arc<safe_vk::Buffer>>,
     uniform_buffer: safe_vk::Buffer,
     uniform_descriptor_set: Arc<safe_vk::DescriptorSet>,
-    texture_descriptor_set_layout: safe_vk::DescriptorSetLayout,
+    texture_descriptor_set_layout: Arc<safe_vk::DescriptorSetLayout>,
     texture_descriptor_set: Option<Arc<safe_vk::DescriptorSet>>,
     texture_version: Option<u64>,
     next_user_texture_id: u64,
@@ -61,6 +64,7 @@ pub struct UiPass {
     user_textures: Vec<Option<Arc<safe_vk::DescriptorSet>>>,
     allocator: Arc<safe_vk::Allocator>,
     render_pass: Arc<safe_vk::RenderPass>,
+    descriptor_pool: Arc<safe_vk::DescriptorPool>,
 }
 
 impl UiPass {
@@ -81,7 +85,7 @@ impl UiPass {
 
         let sampler = safe_vk::Sampler::new(device.clone());
 
-        let uniform_descriptor_set_layout = safe_vk::DescriptorSetLayout::new(
+        let uniform_descriptor_set_layout = Arc::new(safe_vk::DescriptorSetLayout::new(
             device.clone(),
             &[
                 vk::DescriptorSetLayoutBinding::builder()
@@ -97,9 +101,9 @@ impl UiPass {
                     .descriptor_count(1)
                     .build(),
             ],
-        );
+        ));
 
-        let texture_descriptor_set_layout = safe_vk::DescriptorSetLayout::new(
+        let texture_descriptor_set_layout = Arc::new(safe_vk::DescriptorSetLayout::new(
             device.clone(),
             &[vk::DescriptorSetLayoutBinding::builder()
                 .binding(0)
@@ -107,7 +111,7 @@ impl UiPass {
                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                 .descriptor_count(1)
                 .build()],
-        );
+        ));
 
         let pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
             device.clone(),
@@ -224,7 +228,16 @@ impl UiPass {
 
         let uniform_descriptor_set = Arc::new(safe_vk::DescriptorSet::new(
             descriptor_pool.clone(),
-            &uniform_descriptor_set_layout,
+            uniform_descriptor_set_layout.clone(),
+        ));
+
+        let descriptor_pool = Arc::new(DescriptorPool::new(
+            device.clone(),
+            &[vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::SAMPLED_IMAGE)
+                .descriptor_count(1)
+                .build()],
+            1,
         ));
 
         Self {
@@ -241,6 +254,7 @@ impl UiPass {
             user_textures: Vec::new(),
             render_pass,
             allocator,
+            descriptor_pool,
         }
     }
 
@@ -350,5 +364,73 @@ impl UiPass {
                     .unwrap_or_else(|| panic!("user texture {} freed", id))
             }
         }
+    }
+
+    pub fn update_texture(
+        &mut self,
+        egui_texture: &egui::Texture,
+        queue: &mut Queue,
+        command_pool: Arc<CommandPool>,
+    ) {
+        // Don't update the texture if it hasn't changed.
+        if self.texture_version == Some(egui_texture.version) {
+            return;
+        }
+        // we need to convert the texture into rgba format
+        let egui_texture = egui::Texture {
+            version: egui_texture.version,
+            width: egui_texture.width,
+            height: egui_texture.height,
+            pixels: egui_texture
+                .pixels
+                .iter()
+                .flat_map(|p| std::iter::repeat(*p).take(4))
+                .collect(),
+        };
+        let descriptor_set = self.egui_texture_to_gpu(&egui_texture, queue, command_pool);
+
+        self.texture_version = Some(egui_texture.version);
+        self.texture_descriptor_set = Some(Arc::new(descriptor_set));
+    }
+
+    fn egui_texture_to_gpu(
+        &self,
+        egui_texture: &egui::Texture,
+        queue: &mut Queue,
+        command_pool: Arc<CommandPool>,
+    ) -> DescriptorSet {
+        let image = Arc::new(Image::new(
+            self.allocator.clone(),
+            egui_texture.width as u32,
+            egui_texture.height as u32,
+            vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+            MemoryUsage::GpuOnly,
+        ));
+        let staging_buffer = Buffer::new_init_host(
+            self.allocator.clone(),
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryUsage::CpuToGpu,
+            egui_texture.pixels.as_slice(),
+        );
+
+        image.copy_from_buffer(&staging_buffer, queue, command_pool);
+
+        let descriptor_set = DescriptorSet::new(
+            self.descriptor_pool.clone(),
+            self.texture_descriptor_set_layout.clone(),
+        );
+        descriptor_set.update(&[safe_vk::DescriptorSetUpdateInfo {
+            binding: 0,
+            detail: safe_vk::DescriptorSetUpdateDetail::Image(Arc::new(ImageView::new(image))),
+        }]);
+
+        descriptor_set
+    }
+
+    pub fn update_buffers(
+        &mut self,
+        paint_jobs: &[egui::paint::PaintJob],
+        screen_descriptor: &ScreenDescriptor,
+    ) {
     }
 }

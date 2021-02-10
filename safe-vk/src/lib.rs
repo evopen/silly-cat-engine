@@ -1,6 +1,6 @@
 #![feature(negative_impls)]
 
-use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0, DeviceV1_1, DeviceV1_2, EntryV1_0, InstanceV1_0};
 
 use anyhow::Result;
 use ash::extensions;
@@ -449,7 +449,29 @@ impl Buffer {
         }
     }
 
-    pub fn new_init<I: AsRef<[u8]>>(
+    pub fn new_init_host<I: AsRef<[u8]>>(
+        allocator: Arc<Allocator>,
+        buffer_usage: vk::BufferUsageFlags,
+        memory_usage: vk_mem::MemoryUsage,
+        data: I,
+    ) -> Self {
+        let data = data.as_ref();
+        let mut buffer = Self::new(
+            allocator.clone(),
+            data.len(),
+            buffer_usage
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::TRANSFER_DST,
+            memory_usage,
+        );
+        let mapped = buffer.map();
+        let mapped_slice = unsafe { std::slice::from_raw_parts_mut(mapped, buffer.size) };
+        mapped_slice.copy_from_slice(data.as_ref());
+        buffer.unmap();
+        buffer
+    }
+
+    pub fn new_init_device<I: AsRef<[u8]>>(
         allocator: Arc<Allocator>,
         buffer_usage: vk::BufferUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
@@ -1598,6 +1620,7 @@ impl Drop for RenderPass {
 pub struct DescriptorSetLayout {
     handle: vk::DescriptorSetLayout,
     device: Arc<Device>,
+    bindings: Vec<vk::DescriptorSetLayoutBinding>,
 }
 
 impl DescriptorSetLayout {
@@ -1610,7 +1633,11 @@ impl DescriptorSetLayout {
                 .handle
                 .create_descriptor_set_layout(&info, None)
                 .unwrap();
-            Self { handle, device }
+            Self {
+                handle,
+                device,
+                bindings: bindings.to_vec(),
+            }
         }
     }
 }
@@ -1773,12 +1800,13 @@ impl Drop for ShaderModule {
 pub struct DescriptorSet {
     handle: vk::DescriptorSet,
     descriptor_pool: Arc<DescriptorPool>,
+    descriptor_set_layout: Arc<DescriptorSetLayout>,
 }
 
 impl DescriptorSet {
     pub fn new(
         descriptor_pool: Arc<DescriptorPool>,
-        descriptor_set_layout: &DescriptorSetLayout,
+        descriptor_set_layout: Arc<DescriptorSetLayout>,
     ) -> Self {
         let device = &descriptor_pool.device;
         let info = vk::DescriptorSetAllocateInfo::builder()
@@ -1796,9 +1824,53 @@ impl DescriptorSet {
             Self {
                 handle,
                 descriptor_pool,
+                descriptor_set_layout,
             }
         }
     }
+
+    pub fn update(&self, update_infos: &[DescriptorSetUpdateInfo]) {
+        let device = &self.descriptor_pool.device;
+        let descriptor_writes = update_infos
+            .iter()
+            .map(|info| {
+                let builder = vk::WriteDescriptorSet::builder()
+                    .dst_set(self.handle)
+                    .dst_binding(info.binding);
+                let write = match info.detail.borrow() {
+                    DescriptorSetUpdateDetail::Buffer(buffer) => builder
+                        .buffer_info(&[vk::DescriptorBufferInfo::builder()
+                            .buffer(buffer.handle)
+                            .offset(0)
+                            .range(vk::WHOLE_SIZE)
+                            .build()])
+                        .build(),
+                    DescriptorSetUpdateDetail::Image(image_view) => builder
+                        .image_info(&[vk::DescriptorImageInfo::builder()
+                            .image_layout(image_view.image.layout)
+                            .image_view(image_view.handle)
+                            .build()])
+                        .build(),
+                };
+                write
+            })
+            .collect::<Vec<_>>();
+        unsafe {
+            device
+                .handle
+                .update_descriptor_sets(descriptor_writes.as_slice(), &[]);
+        }
+    }
+}
+
+pub enum DescriptorSetUpdateDetail {
+    Buffer(Arc<Buffer>),
+    Image(Arc<ImageView>),
+}
+
+pub struct DescriptorSetUpdateInfo {
+    pub binding: u32,
+    pub detail: DescriptorSetUpdateDetail,
 }
 
 impl Drop for DescriptorSet {

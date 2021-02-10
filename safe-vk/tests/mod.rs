@@ -153,7 +153,7 @@ fn test_all() {
         semaphore.wait_for(1);
 
         let matrix: [f32; 12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-        let buffer = Buffer::new_init(
+        let buffer = Buffer::new_init_device(
             allocator.clone(),
             vk::BufferUsageFlags::empty(),
             vk_mem::MemoryUsage::CpuToGpu,
@@ -163,7 +163,7 @@ fn test_all() {
         );
         assert_eq!(buffer.size(), 12 * 4);
 
-        let buffer = Buffer::new_init(
+        let buffer = Buffer::new_init_device(
             allocator.clone(),
             vk::BufferUsageFlags::STORAGE_BUFFER,
             vk_mem::MemoryUsage::GpuOnly,

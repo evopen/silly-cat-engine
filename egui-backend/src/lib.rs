@@ -396,13 +396,13 @@ impl UiPass {
     }
 
     fn egui_texture_to_gpu(&mut self, egui_texture: &egui::Texture) -> DescriptorSet {
-        let image = Arc::new(Image::new(
+        let mut image = Image::new(
             self.allocator.clone(),
             egui_texture.width as u32,
             egui_texture.height as u32,
             vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
             MemoryUsage::GpuOnly,
-        ));
+        );
         let staging_buffer = Buffer::new_init_host(
             self.allocator.clone(),
             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -416,13 +416,22 @@ impl UiPass {
             self.command_pool.clone(),
         );
 
-        let descriptor_set = DescriptorSet::new(
+        image.set_layout(
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            &mut self.queue.lock().unwrap(),
+            self.command_pool.clone(),
+        );
+
+        let mut descriptor_set = DescriptorSet::new(
             self.descriptor_pool.clone(),
             self.texture_descriptor_set_layout.clone(),
         );
+
         descriptor_set.update(&[safe_vk::DescriptorSetUpdateInfo {
             binding: 0,
-            detail: safe_vk::DescriptorSetUpdateDetail::Image(Arc::new(ImageView::new(image))),
+            detail: safe_vk::DescriptorSetUpdateDetail::Image(Arc::new(ImageView::new(Arc::new(
+                image,
+            )))),
         }]);
 
         descriptor_set

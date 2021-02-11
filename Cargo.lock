@@ -445,12 +445,23 @@ dependencies = [
  "anyhow",
  "ash-window",
  "bytemuck",
+ "egui_winit_platform",
  "epi",
  "glob",
  "rust-embed",
  "safe-vk",
  "shaderc",
  "tokio",
+ "winit",
+]
+
+[[package]]
+name = "egui_winit_platform"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6802c10732ce81479f5308bc89eaae7ee68f2eb43af1771d763892d24bbe7ab"
+dependencies = [
+ "egui",
  "winit",
 ]
 

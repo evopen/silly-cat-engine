@@ -21,3 +21,4 @@ glob = "0.3.0"
 winit = "0.24.0"
 tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
 ash-window = "0.5.0"
+egui_winit_platform = "0.4.0"

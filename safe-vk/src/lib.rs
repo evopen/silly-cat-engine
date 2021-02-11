@@ -1018,11 +1018,22 @@ impl<'a> CommandRecorder<'a> {
             regions,
         );
     }
+
+    pub fn set_image_layout(&mut self, image: Arc<Image>, new_layout: vk::ImageLayout) {
+        cmd_set_image_layout(image.layout, &self.command_buffer, image.handle, new_layout);
+        self.command_buffer.resources.push(image);
+    }
+
+    unsafe fn set_image_layout_raw(&mut self, image: &Image, new_layout: vk::ImageLayout) {
+        cmd_set_image_layout(image.layout, &self.command_buffer, image.handle, new_layout);
+    }
 }
 
 trait Resource {}
 
 impl Resource for Buffer {}
+impl Resource for Image {}
+impl Resource for ImageView {}
 impl Resource for RenderPass {}
 impl Resource for Framebuffer {}
 impl Resource for GraphicsPipeline {}
@@ -1298,16 +1309,16 @@ impl Image {
     }
 
     pub fn copy_from_buffer(
-        &self,
+        &mut self,
         buffer: &Buffer,
         queue: &mut Queue,
         command_pool: Arc<CommandPool>,
     ) {
-        let device = self.device();
         let mut command_buffer = CommandBuffer::new(command_pool.clone());
 
         unsafe {
             command_buffer.encode(|recorder| {
+                recorder.set_image_layout_raw(self, vk::ImageLayout::TRANSFER_DST_OPTIMAL);
                 recorder.copy_buffer_to_image_raw(
                     buffer,
                     self,
@@ -1333,8 +1344,34 @@ impl Image {
                 );
             });
         }
+        self.layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
 
-        let semaphore = TimelineSemaphore::new(device.clone());
+        let semaphore = TimelineSemaphore::new(self.device().clone());
+        queue.submit_timeline(
+            command_buffer,
+            &[&semaphore],
+            &[0],
+            &[vk::PipelineStageFlags::ALL_COMMANDS],
+            &[1],
+        );
+        semaphore.wait_for(1);
+    }
+
+    pub fn set_layout(
+        &mut self,
+        layout: vk::ImageLayout,
+        queue: &mut Queue,
+        command_pool: Arc<CommandPool>,
+    ) {
+        let mut command_buffer = CommandBuffer::new(command_pool.clone());
+        unsafe {
+            command_buffer.encode(|recorder| {
+                recorder.set_image_layout_raw(self, layout);
+            });
+        }
+        self.layout = layout;
+
+        let semaphore = TimelineSemaphore::new(self.device().clone());
         queue.submit_timeline(
             command_buffer,
             &[&semaphore],
@@ -1502,6 +1539,7 @@ fn cmd_set_image_layout(
             ImageLayout::TRANSFER_SRC_OPTIMAL => AccessFlags::TRANSFER_READ,
             ImageLayout::TRANSFER_DST_OPTIMAL => AccessFlags::TRANSFER_WRITE,
             ImageLayout::PRESENT_SRC_KHR => AccessFlags::COLOR_ATTACHMENT_READ,
+            ImageLayout::SHADER_READ_ONLY_OPTIMAL => AccessFlags::SHADER_READ,
             _ => {
                 unimplemented!("unknown new layout {:?}", new_layout);
             }
@@ -1801,6 +1839,7 @@ pub struct DescriptorSet {
     handle: vk::DescriptorSet,
     descriptor_pool: Arc<DescriptorPool>,
     descriptor_set_layout: Arc<DescriptorSetLayout>,
+    resources: Vec<Arc<dyn Resource>>,
 }
 
 impl DescriptorSet {
@@ -1825,33 +1864,56 @@ impl DescriptorSet {
                 handle,
                 descriptor_pool,
                 descriptor_set_layout,
+                resources: Vec::new(),
             }
         }
     }
 
-    pub fn update(&self, update_infos: &[DescriptorSetUpdateInfo]) {
-        let device = &self.descriptor_pool.device;
+    pub fn update(&mut self, update_infos: &[DescriptorSetUpdateInfo]) {
+        let device = self.descriptor_pool.device.clone();
+        let bindings = self.descriptor_set_layout.bindings.clone();
+
         let descriptor_writes = update_infos
             .iter()
             .map(|info| {
-                let builder = vk::WriteDescriptorSet::builder()
-                    .dst_set(self.handle)
-                    .dst_binding(info.binding);
-                let write = match info.detail.borrow() {
-                    DescriptorSetUpdateDetail::Buffer(buffer) => builder
-                        .buffer_info(&[vk::DescriptorBufferInfo::builder()
-                            .buffer(buffer.handle)
-                            .offset(0)
-                            .range(vk::WHOLE_SIZE)
-                            .build()])
-                        .build(),
-                    DescriptorSetUpdateDetail::Image(image_view) => builder
-                        .image_info(&[vk::DescriptorImageInfo::builder()
-                            .image_layout(image_view.image.layout)
-                            .image_view(image_view.handle)
-                            .build()])
-                        .build(),
+                let mut buffer_infos = Vec::new();
+                let mut image_infos = Vec::new();
+                match info.detail.borrow() {
+                    DescriptorSetUpdateDetail::Buffer(buffer) => {
+                        self.resources.push(buffer.clone());
+                        buffer_infos.push(
+                            vk::DescriptorBufferInfo::builder()
+                                .buffer(buffer.handle)
+                                .offset(0)
+                                .range(vk::WHOLE_SIZE)
+                                .build(),
+                        )
+                    }
+                    DescriptorSetUpdateDetail::Image(image_view) => {
+                        self.resources.push(image_view.clone());
+                        image_infos.push(
+                            vk::DescriptorImageInfo::builder()
+                                .image_layout(image_view.image.layout)
+                                .image_view(image_view.handle)
+                                .build(),
+                        );
+                    }
                 };
+                let mut write = vk::WriteDescriptorSet::builder()
+                    .dst_set(self.handle)
+                    .dst_binding(info.binding)
+                    .descriptor_type(
+                        bindings
+                            .iter()
+                            .filter(|binding| binding.binding == info.binding)
+                            .map(|binding| binding.descriptor_type)
+                            .next()
+                            .unwrap(),
+                    )
+                    .image_info(image_infos.as_slice())
+                    .buffer_info(buffer_infos.as_slice())
+                    .build();
+                write.descriptor_count = 1;
                 write
             })
             .collect::<Vec<_>>();

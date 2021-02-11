@@ -457,14 +457,26 @@ impl UiPass {
             if i < index_size {
                 self.index_buffers[i].copy_from(data);
             } else {
-                unimplemented!()
+                let buffer = Buffer::new_init_host(
+                    self.allocator.clone(),
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    MemoryUsage::CpuToGpu,
+                    data,
+                );
+                self.index_buffers.push(Arc::new(buffer));
             }
 
             let data: &[u8] = as_byte_slice(&triangles.vertices);
             if i < vertex_size {
                 self.vertex_buffers[i].copy_from(data);
             } else {
-                unimplemented!()
+                let buffer = Buffer::new_init_host(
+                    self.allocator.clone(),
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    MemoryUsage::CpuToGpu,
+                    data,
+                );
+                self.index_buffers.push(Arc::new(buffer));
             }
         }
     }

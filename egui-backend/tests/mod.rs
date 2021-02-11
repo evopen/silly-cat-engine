@@ -2,7 +2,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use egui_backend::*;
-use safe_vk::{vk, Allocator, Device, Entry, Instance, PhysicalDevice, Surface};
+use epi::egui;
+use safe_vk::{
+    vk, Allocator, BinarySemaphore, CommandBuffer, CommandPool, Device, Entry, Instance,
+    PhysicalDevice, Surface, Swapchain,
+};
 
 #[test]
 fn test_all() {
@@ -25,9 +29,13 @@ fn test_all() {
             .collect::<Vec<_>>();
         let instance = Arc::new(Instance::new(
             entry.clone(),
-            &["VK_LAYER_KHRONOS_validation", "VK_LAYER_LUNARG_monitor"],
+            &[
+                safe_vk::name::instance::layer::khronos::VALIDATION,
+                safe_vk::name::instance::layer::lunarg::MONITOR,
+            ],
             surface_extensions.as_slice(),
         ));
+
         let surface = Arc::new(Surface::new(instance.clone(), &window));
         let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), &surface));
         let device = Arc::new(Device::new(
@@ -49,6 +57,16 @@ fn test_all() {
                 font_definitions: Default::default(),
                 style: Default::default(),
             });
+
+        let image_available_semaphore = Arc::new(BinarySemaphore::new(device.clone()));
+        let render_finish_semaphore = Arc::new(BinarySemaphore::new(device.clone()));
+        let mut swapchain = Arc::new(Swapchain::new(device.clone(), surface.clone()));
+        let command_pool = Arc::new(CommandPool::new(device.clone()));
+        let swapchain_images = safe_vk::Image::from_swapchain(swapchain.clone())
+            .into_iter()
+            .map(|image| Arc::new(image))
+            .collect::<Vec<_>>();
+        let mut queue = safe_vk::Queue::new(device.clone());
 
         event_loop.run(move |event, _, control_flow| match event {
             winit::event::Event::NewEvents(_) => {}
@@ -116,9 +134,45 @@ fn test_all() {
             winit::event::Event::RedrawRequested(_) => {
                 platform.update_time(start_time.elapsed().as_secs_f64());
                 platform.begin_frame();
+                egui::TopPanel::top(egui::Id::new("menu bar"))
+                    .show(&platform.context().clone(), |ui| ui.button("fuck"));
+
                 let (_output, paint_commands) = platform.end_frame();
                 let paint_jobs = platform.context().tessellate(paint_commands);
+                dbg!(paint_jobs.len());
                 ui_pass.update_texture(&platform.context().texture());
+                let screen_descriptor = ScreenDescriptor {
+                    physical_width: window.inner_size().width,
+                    physical_height: window.inner_size().height,
+                    scale_factor: window.scale_factor() as f32,
+                };
+                ui_pass.update_buffers(&paint_jobs, &screen_descriptor);
+
+                let (index, _) = swapchain.acquire_next_image(image_available_semaphore.clone());
+                let mut command_buffer = CommandBuffer::new(command_pool.clone());
+                command_buffer.encode(|recorder| {
+                    recorder.set_image_layout(
+                        swapchain_images[index as usize].clone(),
+                        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    );
+                    ui_pass.execute(
+                        recorder,
+                        swapchain_images[index as usize].clone(),
+                        &paint_jobs,
+                        &screen_descriptor,
+                    );
+                    recorder.set_image_layout(
+                        swapchain_images[index as usize].clone(),
+                        vk::ImageLayout::PRESENT_SRC_KHR,
+                    );
+                });
+                let fence = queue.submit_binary(
+                    command_buffer,
+                    &[&image_available_semaphore],
+                    &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+                    &[&render_finish_semaphore],
+                );
+                queue.present(&swapchain, index, &[&render_finish_semaphore]);
             }
             winit::event::Event::RedrawEventsCleared => {}
             winit::event::Event::LoopDestroyed => {}

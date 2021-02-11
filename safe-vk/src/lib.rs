@@ -602,6 +602,51 @@ impl Queue {
         }
     }
 
+    pub fn submit_binary(
+        &mut self,
+        command_buffer: CommandBuffer,
+        wait_semaphore: &[&BinarySemaphore],
+        wait_stages: &[vk::PipelineStageFlags],
+        signal_semaphore: &[&BinarySemaphore],
+    ) -> Arc<Fence> {
+        self.clean_command_buffers();
+
+        let wait_handles = wait_semaphore.iter().map(|s| s.handle).collect::<Vec<_>>();
+        let signal_handles = signal_semaphore
+            .iter()
+            .map(|s| s.handle)
+            .collect::<Vec<_>>();
+
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&[command_buffer.handle])
+            .wait_semaphores(wait_handles.as_slice())
+            .wait_dst_stage_mask(wait_stages)
+            .signal_semaphores(signal_handles.as_slice())
+            .build();
+
+        let fence = Arc::new(Fence::new(self.device.clone(), false));
+
+        let in_use = Arc::new(Mutex::new(true));
+        let in_use_signaler = in_use.clone();
+
+        unsafe {
+            self.device
+                .handle
+                .queue_submit(self.handle, &[submit_info], fence.handle)
+                .unwrap();
+        }
+        let fence_cloned = fence.clone();
+        let task = tokio::task::spawn(async move {
+            fence_cloned.wait();
+            *in_use_signaler.lock().unwrap() = false;
+        });
+
+        self.command_buffers
+            .insert(command_buffer.handle, (in_use, command_buffer));
+
+        fence
+    }
+
     pub fn submit_timeline(
         &mut self,
         command_buffer: CommandBuffer,
@@ -646,6 +691,22 @@ impl Queue {
 
             self.command_buffers
                 .insert(command_buffer.handle, (in_use, command_buffer));
+        }
+    }
+
+    pub fn present(&self, swapchain: &Swapchain, index: u32, wait_semaphore: &[&BinarySemaphore]) {
+        let wait_handles = wait_semaphore.iter().map(|s| s.handle).collect::<Vec<_>>();
+
+        let info = vk::PresentInfoKHR::builder()
+            .swapchains(&[swapchain.handle])
+            .wait_semaphores(wait_handles.as_slice())
+            .image_indices(&[index])
+            .build();
+        unsafe {
+            self.device
+                .swapchain_loader
+                .queue_present(self.handle, &info)
+                .unwrap();
         }
     }
 }
@@ -764,12 +825,13 @@ pub struct BinarySemaphore {
 }
 
 impl BinarySemaphore {
-    pub fn new(device: Arc<Device>) -> Result<Self> {
+    pub fn new(device: Arc<Device>) -> Self {
         unsafe {
             let handle = device
                 .handle
-                .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?;
-            Ok(Self { handle, device })
+                .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+                .unwrap();
+            Self { handle, device }
         }
     }
 }
@@ -978,6 +1040,7 @@ impl<'a> CommandRecorder<'a> {
                 vk::PipelineBindPoint::GRAPHICS,
                 pipeline.handle,
             );
+            self.bind_point = Some(vk::PipelineBindPoint::GRAPHICS);
             f(self, pipeline.as_ref());
         }
         // self.command_buffer.resources.push(pipeline);
@@ -1179,14 +1242,14 @@ impl Swapchain {
         }
     }
 
-    pub fn acquire_next_image(&self, semaphore: vk::Semaphore) -> Result<(u32, bool)> {
+    pub fn acquire_next_image(&self, semaphore: Arc<BinarySemaphore>) -> (u32, bool) {
         unsafe {
-            Ok(self.device.swapchain_loader.acquire_next_image(
-                self.handle,
-                0,
-                semaphore,
-                vk::Fence::null(),
-            )?)
+            let (index, sub) = self
+                .device
+                .swapchain_loader
+                .acquire_next_image(self.handle, 0, semaphore.handle, vk::Fence::null())
+                .unwrap();
+            (index, sub)
         }
     }
 

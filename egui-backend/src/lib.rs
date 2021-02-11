@@ -1,8 +1,8 @@
 mod shaders;
 
 use epi::egui;
-use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::unimplemented;
 
 use bytemuck::{Pod, Zeroable};
 
@@ -65,6 +65,8 @@ pub struct UiPass {
     allocator: Arc<safe_vk::Allocator>,
     render_pass: Arc<safe_vk::RenderPass>,
     descriptor_pool: Arc<safe_vk::DescriptorPool>,
+    command_pool: Arc<safe_vk::CommandPool>,
+    queue: Arc<Mutex<safe_vk::Queue>>,
 }
 
 impl UiPass {
@@ -240,6 +242,9 @@ impl UiPass {
             1,
         ));
 
+        let command_pool = Arc::new(safe_vk::CommandPool::new(device.clone()));
+        let queue = Arc::new(Mutex::new(safe_vk::Queue::new(device.clone())));
+
         Self {
             graphics_pipeline,
             vertex_buffers: Vec::with_capacity(64),
@@ -255,6 +260,8 @@ impl UiPass {
             render_pass,
             allocator,
             descriptor_pool,
+            queue,
+            command_pool,
         }
     }
 
@@ -366,12 +373,7 @@ impl UiPass {
         }
     }
 
-    pub fn update_texture(
-        &mut self,
-        egui_texture: &egui::Texture,
-        queue: &mut Queue,
-        command_pool: Arc<CommandPool>,
-    ) {
+    pub fn update_texture(&mut self, egui_texture: &egui::Texture) {
         // Don't update the texture if it hasn't changed.
         if self.texture_version == Some(egui_texture.version) {
             return;
@@ -387,18 +389,13 @@ impl UiPass {
                 .flat_map(|p| std::iter::repeat(*p).take(4))
                 .collect(),
         };
-        let descriptor_set = self.egui_texture_to_gpu(&egui_texture, queue, command_pool);
+        let descriptor_set = self.egui_texture_to_gpu(&egui_texture);
 
         self.texture_version = Some(egui_texture.version);
         self.texture_descriptor_set = Some(Arc::new(descriptor_set));
     }
 
-    fn egui_texture_to_gpu(
-        &self,
-        egui_texture: &egui::Texture,
-        queue: &mut Queue,
-        command_pool: Arc<CommandPool>,
-    ) -> DescriptorSet {
+    fn egui_texture_to_gpu(&mut self, egui_texture: &egui::Texture) -> DescriptorSet {
         let image = Arc::new(Image::new(
             self.allocator.clone(),
             egui_texture.width as u32,
@@ -413,7 +410,11 @@ impl UiPass {
             egui_texture.pixels.as_slice(),
         );
 
-        image.copy_from_buffer(&staging_buffer, queue, command_pool);
+        image.copy_from_buffer(
+            &staging_buffer,
+            &mut self.queue.lock().unwrap(),
+            self.command_pool.clone(),
+        );
 
         let descriptor_set = DescriptorSet::new(
             self.descriptor_pool.clone(),
@@ -432,5 +433,74 @@ impl UiPass {
         paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
     ) {
+        let index_size = self.index_buffers.len();
+        let vertex_size = self.vertex_buffers.len();
+
+        let (logical_width, logical_height) = screen_descriptor.logical_size();
+
+        self.uniform_buffer
+            .copy_from(bytemuck::cast_slice(&[UniformBuffer {
+                screen_size: [logical_width as f32, logical_height as f32],
+            }]));
+
+        for (i, (_, triangles)) in paint_jobs.iter().enumerate() {
+            let data: &[u8] = bytemuck::cast_slice(&triangles.indices);
+            if i < index_size {
+                self.index_buffers[i].copy_from(data);
+            } else {
+                unimplemented!()
+            }
+
+            let data: &[u8] = as_byte_slice(&triangles.vertices);
+            if i < vertex_size {
+                self.vertex_buffers[i].copy_from(data);
+            } else {
+                unimplemented!()
+            }
+        }
     }
+}
+
+impl epi::TextureAllocator for UiPass {
+    fn alloc_srgba_premultiplied(
+        &mut self,
+        size: (usize, usize),
+        srgba_pixels: &[egui::Color32],
+    ) -> egui::TextureId {
+        let id = self.next_user_texture_id;
+        self.next_user_texture_id += 1;
+
+        let mut pixels = vec![0u8; srgba_pixels.len() * 4];
+        for (target, given) in pixels.chunks_exact_mut(4).zip(srgba_pixels.iter()) {
+            target.copy_from_slice(&given.to_array());
+        }
+
+        let (width, height) = size;
+        self.pending_user_textures.push((
+            id,
+            egui::Texture {
+                version: 0,
+                width,
+                height,
+                pixels,
+            },
+        ));
+
+        egui::TextureId::User(id)
+    }
+
+    fn free(&mut self, id: egui::TextureId) {
+        if let egui::TextureId::User(id) = id {
+            self.user_textures
+                .get_mut(id as usize)
+                .and_then(|option| option.take());
+        }
+    }
+}
+
+// Needed since we can't use bytemuck for external types.
+fn as_byte_slice<T>(slice: &[T]) -> &[u8] {
+    let len = slice.len() * std::mem::size_of::<T>();
+    let ptr = slice.as_ptr() as *const u8;
+    unsafe { std::slice::from_raw_parts(ptr, len) }
 }

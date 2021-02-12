@@ -27,13 +27,15 @@ fn test_all() {
             .iter()
             .map(|s| s.to_str().unwrap())
             .collect::<Vec<_>>();
+        let mut extensions = surface_extensions;
+        extensions.push(safe_vk::name::instance::extension::ext::DEBUG_UTILS);
         let instance = Arc::new(Instance::new(
             entry.clone(),
             &[
                 safe_vk::name::instance::layer::khronos::VALIDATION,
                 safe_vk::name::instance::layer::lunarg::MONITOR,
             ],
-            surface_extensions.as_slice(),
+            extensions.as_slice(),
         ));
 
         let surface = Arc::new(Surface::new(instance.clone(), &window));

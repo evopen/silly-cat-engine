@@ -54,7 +54,7 @@ pub struct UiPass {
     graphics_pipeline: Arc<safe_vk::GraphicsPipeline>,
     index_buffers: Vec<Arc<safe_vk::Buffer>>,
     vertex_buffers: Vec<Arc<safe_vk::Buffer>>,
-    uniform_buffer: safe_vk::Buffer,
+    uniform_buffer: Arc<safe_vk::Buffer>,
     uniform_descriptor_set: Arc<safe_vk::DescriptorSet>,
     texture_descriptor_set_layout: Arc<safe_vk::DescriptorSetLayout>,
     texture_descriptor_set: Option<Arc<safe_vk::DescriptorSet>>,
@@ -78,17 +78,18 @@ impl UiPass {
         let fs_module =
             safe_vk::ShaderModule::new(device.clone(), Shaders::get("egui.frag.spv").unwrap());
 
-        let uniform_buffer = safe_vk::Buffer::new(
+        let uniform_buffer = Arc::new(safe_vk::Buffer::new(
             allocator.clone(),
             std::mem::size_of::<UniformBuffer>(),
             vk::BufferUsageFlags::UNIFORM_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             MemoryUsage::CpuToGpu,
-        );
+        ));
 
-        let sampler = safe_vk::Sampler::new(device.clone());
+        let sampler = Arc::new(safe_vk::Sampler::new(device.clone()));
 
         let uniform_descriptor_set_layout = Arc::new(safe_vk::DescriptorSetLayout::new(
             device.clone(),
+            Some("uniform"),
             &[
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(0)
@@ -107,6 +108,7 @@ impl UiPass {
 
         let texture_descriptor_set_layout = Arc::new(safe_vk::DescriptorSetLayout::new(
             device.clone(),
+            Some("texture"),
             &[vk::DescriptorSetLayoutBinding::builder()
                 .binding(0)
                 .stage_flags(vk::ShaderStageFlags::FRAGMENT)
@@ -117,6 +119,7 @@ impl UiPass {
 
         let pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
             device.clone(),
+            Some("egui pipeline layout"),
             &[
                 &uniform_descriptor_set_layout,
                 &texture_descriptor_set_layout,
@@ -145,6 +148,7 @@ impl UiPass {
         ));
 
         let graphics_pipeline = Arc::new(safe_vk::GraphicsPipeline::new(
+            Some("egui pipeline"),
             pipeline_layout,
             vec![
                 Arc::new(safe_vk::ShaderStage::new(
@@ -228,10 +232,23 @@ impl UiPass {
             1,
         ));
 
-        let uniform_descriptor_set = Arc::new(safe_vk::DescriptorSet::new(
+        let mut uniform_descriptor_set = safe_vk::DescriptorSet::new(
+            Some("uniform descriptor set"),
             descriptor_pool.clone(),
             uniform_descriptor_set_layout.clone(),
-        ));
+        );
+        uniform_descriptor_set.update(&[
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 0,
+                detail: safe_vk::DescriptorSetUpdateDetail::Buffer(uniform_buffer.clone()),
+            },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 1,
+                detail: safe_vk::DescriptorSetUpdateDetail::Sampler(sampler.clone()),
+            },
+        ]);
+
+        let uniform_descriptor_set = Arc::new(uniform_descriptor_set);
 
         let descriptor_pool = Arc::new(DescriptorPool::new(
             device.clone(),
@@ -239,7 +256,7 @@ impl UiPass {
                 .ty(vk::DescriptorType::SAMPLED_IMAGE)
                 .descriptor_count(1)
                 .build()],
-            1,
+            2,
         ));
 
         let command_pool = Arc::new(safe_vk::CommandPool::new(device.clone()));
@@ -291,6 +308,7 @@ impl UiPass {
                     recorder.bind_descriptor_sets(
                         vec![self.uniform_descriptor_set.clone()],
                         pipeline.layout(),
+                        0,
                     );
                     for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
                         .iter()
@@ -344,6 +362,7 @@ impl UiPass {
                                 .get_texture_descriptor_set(triangles.texture_id)
                                 .clone()],
                             pipeline.layout(),
+                            1,
                         );
 
                         recorder.bind_index_buffer(index_buffer.clone(), 0, vk::IndexType::UINT32);
@@ -423,6 +442,7 @@ impl UiPass {
         );
 
         let mut descriptor_set = DescriptorSet::new(
+            Some("texture descriptor set"),
             self.descriptor_pool.clone(),
             self.texture_descriptor_set_layout.clone(),
         );
@@ -476,7 +496,7 @@ impl UiPass {
                     MemoryUsage::CpuToGpu,
                     data,
                 );
-                self.index_buffers.push(Arc::new(buffer));
+                self.vertex_buffers.push(Arc::new(buffer));
             }
         }
     }

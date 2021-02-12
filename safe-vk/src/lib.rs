@@ -28,7 +28,7 @@ pub mod name {
         pub mod extension {
             pub mod ext {
                 pub const DEBUG_UTILS: &str = "VK_EXT_debug_utils";
-                pub const DEBUG_MARKER: &str = "VK_EXT_debug_marker";
+                // pub const DEBUG_MARKER: &str = "VK_EXT_debug_marker";
             }
         }
     }
@@ -79,6 +79,7 @@ pub struct Instance {
     handle: ash::Instance,
     entry: Arc<Entry>,
     surface_loader: ash::extensions::khr::Surface,
+    debug_utils_loader: ash::extensions::ext::DebugUtils,
 }
 
 impl Instance {
@@ -118,10 +119,13 @@ impl Instance {
         let handle = unsafe { entry.handle.create_instance(&create_info, None).unwrap() };
         let surface_loader = ash::extensions::khr::Surface::new(&entry.handle, &handle);
 
+        let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry.handle, &handle);
+
         let result = Self {
             handle,
             entry,
             surface_loader,
+            debug_utils_loader,
         };
 
         result
@@ -888,6 +892,7 @@ pub trait PipelineRecorder {
         &mut self,
         descriptor_sets: Vec<Arc<DescriptorSet>>,
         layout: &PipelineLayout,
+        first_set: u32,
     );
 }
 
@@ -898,6 +903,7 @@ impl<'a> PipelineRecorder for CommandRecorder<'a> {
         &mut self,
         descriptor_sets: Vec<Arc<DescriptorSet>>,
         layout: &PipelineLayout,
+        first_set: u32,
     ) {
         unsafe {
             let descriptor_set_handles = descriptor_sets
@@ -1096,6 +1102,7 @@ trait Resource {}
 
 impl Resource for Buffer {}
 impl Resource for Image {}
+impl Resource for Sampler {}
 impl Resource for ImageView {}
 impl Resource for RenderPass {}
 impl Resource for Framebuffer {}
@@ -1725,7 +1732,11 @@ pub struct DescriptorSetLayout {
 }
 
 impl DescriptorSetLayout {
-    pub fn new(device: Arc<Device>, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
+    pub fn new(
+        device: Arc<Device>,
+        name: Option<&str>,
+        bindings: &[vk::DescriptorSetLayoutBinding],
+    ) -> Self {
         let info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(bindings)
             .build();
@@ -1734,6 +1745,22 @@ impl DescriptorSetLayout {
                 .handle
                 .create_descriptor_set_layout(&info, None)
                 .unwrap();
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::DESCRIPTOR_SET_LAYOUT)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
+
             Self {
                 handle,
                 device,
@@ -1759,7 +1786,11 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(device: Arc<Device>, set_layouts: &[&DescriptorSetLayout]) -> Self {
+    pub fn new(
+        device: Arc<Device>,
+        name: Option<&str>,
+        set_layouts: &[&DescriptorSetLayout],
+    ) -> Self {
         let set_layouts = set_layouts
             .iter()
             .map(|layout| layout.handle)
@@ -1769,6 +1800,21 @@ impl PipelineLayout {
             .build();
         unsafe {
             let handle = device.handle.create_pipeline_layout(&info, None).unwrap();
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::PIPELINE_LAYOUT)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
             Self { handle, device }
         }
     }
@@ -1797,6 +1843,7 @@ pub struct GraphicsPipeline {
 
 impl GraphicsPipeline {
     pub fn new(
+        name: Option<&str>,
         layout: Arc<PipelineLayout>,
         stages: Vec<Arc<ShaderStage>>,
         render_pass: Arc<RenderPass>,
@@ -1835,6 +1882,21 @@ impl GraphicsPipeline {
                 .first()
                 .unwrap()
                 .to_owned();
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::PIPELINE)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
             Self {
                 handle,
                 layout,
@@ -1907,6 +1969,7 @@ pub struct DescriptorSet {
 
 impl DescriptorSet {
     pub fn new(
+        name: Option<&str>,
         descriptor_pool: Arc<DescriptorPool>,
         descriptor_set_layout: Arc<DescriptorSetLayout>,
     ) -> Self {
@@ -1915,14 +1978,27 @@ impl DescriptorSet {
             .set_layouts(&[descriptor_set_layout.handle])
             .descriptor_pool(descriptor_pool.handle)
             .build();
+
         unsafe {
-            let handle = device
-                .handle
-                .allocate_descriptor_sets(&info)
-                .unwrap()
-                .first()
-                .unwrap()
-                .to_owned();
+            let handles = device.handle.allocate_descriptor_sets(&info).unwrap();
+            assert_eq!(handles.len(), 1);
+            let handle = handles.first().unwrap().to_owned();
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::DESCRIPTOR_SET)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
+
             Self {
                 handle,
                 descriptor_pool,
@@ -1961,6 +2037,14 @@ impl DescriptorSet {
                                 .build(),
                         );
                     }
+                    DescriptorSetUpdateDetail::Sampler(sampler) => {
+                        self.resources.push(sampler.clone());
+                        image_infos.push(
+                            vk::DescriptorImageInfo::builder()
+                                .sampler(sampler.handle)
+                                .build(),
+                        );
+                    }
                 };
                 let mut write = vk::WriteDescriptorSet::builder()
                     .dst_set(self.handle)
@@ -1980,6 +2064,8 @@ impl DescriptorSet {
                 write
             })
             .collect::<Vec<_>>();
+        assert_eq!(descriptor_writes.len(), update_infos.len());
+        dbg!(&update_infos.len());
         unsafe {
             device
                 .handle
@@ -1991,6 +2077,7 @@ impl DescriptorSet {
 pub enum DescriptorSetUpdateDetail {
     Buffer(Arc<Buffer>),
     Image(Arc<ImageView>),
+    Sampler(Arc<Sampler>),
 }
 
 pub struct DescriptorSetUpdateInfo {

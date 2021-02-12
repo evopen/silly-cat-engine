@@ -5,6 +5,7 @@ use std::unimplemented;
 use safe_vk::vk;
 
 pub struct Scene {
+    doc: gltf::Document,
     buffers: Vec<safe_vk::Buffer>,
     images: Vec<safe_vk::Image>,
 }
@@ -57,7 +58,11 @@ impl Scene {
             })
             .collect::<Vec<_>>();
 
-        Self { buffers, images }
+        Self {
+            doc,
+            buffers,
+            images,
+        }
     }
 }
 

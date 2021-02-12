@@ -4,7 +4,8 @@ members = [
     "safe-vk",
     "xtask",
     "egui-backend",
-    "gltf-wrapper"
+    "gltf-wrapper",
+    "ray-tracing-gltf-viewer"
 ]
 
 

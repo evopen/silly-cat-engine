@@ -358,9 +358,9 @@ impl UiPass {
                             }]);
                             recorder.set_viewport(vk::Viewport {
                                 x: 0.0,
-                                y: 0.0,
+                                y: physical_height as f32,
                                 width: physical_width as f32,
-                                height: physical_height as f32,
+                                height: -(physical_height as f32),
                                 min_depth: 0.1,
                                 max_depth: 1.0,
                             });
@@ -483,7 +483,16 @@ impl UiPass {
         for (i, (_, triangles)) in paint_jobs.iter().enumerate() {
             let data: &[u8] = bytemuck::cast_slice(&triangles.indices);
             if i < index_size {
-                self.index_buffers[i].copy_from(data);
+                if self.index_buffers[i].size() != data.len() {
+                    self.index_buffers[i] = Arc::new(Buffer::new_init_host(
+                        self.allocator.clone(),
+                        vk::BufferUsageFlags::INDEX_BUFFER,
+                        MemoryUsage::CpuToGpu,
+                        data,
+                    ));
+                } else {
+                    self.index_buffers[i].copy_from(data);
+                }
             } else {
                 let buffer = Buffer::new_init_host(
                     self.allocator.clone(),
@@ -496,7 +505,16 @@ impl UiPass {
 
             let data: &[u8] = as_byte_slice(&triangles.vertices);
             if i < vertex_size {
-                self.vertex_buffers[i].copy_from(data);
+                if self.vertex_buffers[i].size() != data.len() {
+                    self.vertex_buffers[i] = Arc::new(Buffer::new_init_host(
+                        self.allocator.clone(),
+                        vk::BufferUsageFlags::VERTEX_BUFFER,
+                        MemoryUsage::CpuToGpu,
+                        data,
+                    ));
+                } else {
+                    self.vertex_buffers[i].copy_from(data);
+                }
             } else {
                 let buffer = Buffer::new_init_host(
                     self.allocator.clone(),

@@ -7,3 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+safe-vk = { path = "../safe-vk" }
+egui-backend = { path = "../egui-backend" }
+tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
+egui_winit_platform = "0.4.0"
+winit = "0.24.0"

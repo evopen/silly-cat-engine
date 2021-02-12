@@ -1139,37 +1139,18 @@ impl<'a> CommandRecorder<'a> {
         cmd_set_image_layout(image.layout, &self.command_buffer, image.handle, new_layout);
     }
 
-    fn build_acceleration_structure(
-        &mut self,
-        acceleration_structure: Arc<AccelerationStructure>,
-        infos: &[vk::AccelerationStructureBuildGeometryInfoKHR],
-        build_range_infos: &[&[vk::AccelerationStructureBuildRangeInfoKHR]],
-    ) {
-        unsafe {
-            self.device()
-                .acceleration_structure_loader
-                .cmd_build_acceleration_structures(
-                    self.command_buffer.handle,
-                    infos,
-                    build_range_infos,
-                );
-        }
-        self.command_buffer.resources.push(acceleration_structure);
-    }
-
     fn build_acceleration_structure_raw(
         &mut self,
-        acceleration_structure: &AccelerationStructure,
-        infos: &[vk::AccelerationStructureBuildGeometryInfoKHR],
-        build_range_infos: &[&[vk::AccelerationStructureBuildRangeInfoKHR]],
+        info: vk::AccelerationStructureBuildGeometryInfoKHR,
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
     ) {
         unsafe {
             self.device()
                 .acceleration_structure_loader
                 .cmd_build_acceleration_structures(
                     self.command_buffer.handle,
-                    infos,
-                    build_range_infos,
+                    &[info],
+                    &[build_range_infos],
                 );
         }
     }
@@ -2274,11 +2255,13 @@ impl AccelerationStructure {
         name: Option<&str>,
         allocator: Arc<Allocator>,
         geometries: &[vk::AccelerationStructureGeometryKHR],
+        primitive_counts: &[u32],
         as_type: vk::AccelerationStructureTypeKHR,
-        primitive_count: u32,
-        queue: &mut Queue,
-        command_pool: Arc<CommandPool>,
     ) -> Self {
+        assert_eq!(geometries.len(), primitive_counts.len());
+        let device = &allocator.device;
+        let mut queue = Queue::new(device.clone());
+        let command_pool = Arc::new(CommandPool::new(device.clone()));
         unsafe {
             let size_info = allocator
                 .device
@@ -2351,12 +2334,17 @@ impl AccelerationStructure {
                 })
                 .build();
 
-            let build_range_info = vk::AccelerationStructureBuildRangeInfoKHR::builder()
-                .first_vertex(0)
-                .primitive_offset(0)
-                .transform_offset(0)
-                .primitive_count(primitive_count)
-                .build();
+            let build_range_infos = primitive_counts
+                .into_iter()
+                .map(|count| {
+                    vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                        .first_vertex(0)
+                        .primitive_offset(0)
+                        .transform_offset(0)
+                        .primitive_count(*count)
+                        .build()
+                })
+                .collect::<Vec<_>>();
 
             let device_address = device
                 .acceleration_structure_loader
@@ -2376,9 +2364,8 @@ impl AccelerationStructure {
             let mut command_buffer = CommandBuffer::new(command_pool.clone());
             command_buffer.encode(|recorder| {
                 recorder.build_acceleration_structure_raw(
-                    &result,
-                    &[build_geometry_info],
-                    &[&[build_range_info]],
+                    build_geometry_info,
+                    build_range_infos.as_ref(),
                 )
             });
 

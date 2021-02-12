@@ -72,8 +72,13 @@ fn main() {
                 winit::event::Event::UserEvent(_) => {}
                 winit::event::Event::Suspended => {}
                 winit::event::Event::Resumed => {}
-                winit::event::Event::MainEventsCleared => {}
-                winit::event::Event::RedrawRequested(_) => {}
+                winit::event::Event::MainEventsCleared => {
+                    window.request_redraw();
+                }
+                winit::event::Event::RedrawRequested(_) => {
+                    engine.update();
+                    engine.render();
+                }
                 winit::event::Event::RedrawEventsCleared => {}
                 winit::event::Event::LoopDestroyed => {}
             }

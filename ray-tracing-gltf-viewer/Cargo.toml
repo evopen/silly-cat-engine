@@ -12,3 +12,4 @@ egui-backend = { path = "../egui-backend" }
 tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
 egui_winit_platform = "0.4.0"
 winit = "0.24.0"
+egui = "0.8.0"

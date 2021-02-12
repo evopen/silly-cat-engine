@@ -1319,6 +1319,7 @@ dependencies = [
 name = "ray-tracing-gltf-viewer"
 version = "0.1.0"
 dependencies = [
+ "egui",
  "egui-backend",
  "egui_winit_platform",
  "safe-vk",

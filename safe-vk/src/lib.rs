@@ -166,41 +166,45 @@ impl PhysicalDevice {
                     }
 
                     let a = match surface {
-                        Some(surface) => queue_families_props
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(index, info)| {
-                                let supports_graphic_and_surface =
-                                    info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                                        && surface_loader
-                                            .get_physical_device_surface_support(
-                                                *pdevice,
-                                                index as u32,
-                                                surface.handle,
-                                            )
-                                            .unwrap();
-                                if supports_graphic_and_surface {
-                                    Some((*pdevice, index))
-                                } else {
-                                    None
-                                }
-                            })
-                            .next()
-                            .unwrap(),
-                        None => queue_families_props
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(index, info)| {
-                                let supports_graphic =
-                                    info.queue_flags.contains(vk::QueueFlags::GRAPHICS);
-                                if supports_graphic {
-                                    Some((*pdevice, index))
-                                } else {
-                                    None
-                                }
-                            })
-                            .next()
-                            .unwrap(),
+                        Some(surface) => {
+                            queue_families_props
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(index, info)| {
+                                    let supports_graphic_and_surface =
+                                        info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                                            && surface_loader
+                                                .get_physical_device_surface_support(
+                                                    *pdevice,
+                                                    index as u32,
+                                                    surface.handle,
+                                                )
+                                                .unwrap();
+                                    if supports_graphic_and_surface {
+                                        Some((*pdevice, index))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .next()
+                                .unwrap()
+                        }
+                        None => {
+                            queue_families_props
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(index, info)| {
+                                    let supports_graphic =
+                                        info.queue_flags.contains(vk::QueueFlags::GRAPHICS);
+                                    if supports_graphic {
+                                        Some((*pdevice, index))
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .next()
+                                .unwrap()
+                        }
                     };
                     Some(a)
                 })
@@ -1569,15 +1573,17 @@ impl Image {
 
             let results = images
                 .into_iter()
-                .map(|handle| Self {
-                    handle,
-                    image_type: ImageType::Swapchain {
-                        swapchain: swapchain.clone(),
-                    },
-                    width: swapchain.extent.width,
-                    height: swapchain.extent.height,
-                    layout: vk::ImageLayout::UNDEFINED,
-                    format: swapchain.format,
+                .map(|handle| {
+                    Self {
+                        handle,
+                        image_type: ImageType::Swapchain {
+                            swapchain: swapchain.clone(),
+                        },
+                        width: swapchain.extent.width,
+                        height: swapchain.extent.height,
+                        layout: vk::ImageLayout::UNDEFINED,
+                        format: swapchain.format,
+                    }
                 })
                 .collect::<Vec<_>>();
 

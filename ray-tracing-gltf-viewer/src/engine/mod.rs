@@ -1,3 +1,9 @@
+use std::sync::Arc;
+
+use safe_vk::Swapchain;
+
+use safe_vk::vk;
+
 pub struct Engine {
     ui_platform: egui_winit_platform::Platform,
     size: winit::dpi::PhysicalSize<u32>,
@@ -16,6 +22,16 @@ impl Engine {
                 font_definitions: Default::default(),
                 style: Default::default(),
             });
+        let entry = Arc::new(safe_vk::Entry::new().unwrap());
+        let instance = Arc::new(safe_vk::Instance::new(entry, &[], &[]));
+        let surface = Arc::new(safe_vk::Surface::new(instance.clone(), window));
+        let pdevice = Arc::new(safe_vk::PhysicalDevice::new(instance, Some(surface)));
+        let device = Arc::new(safe_vk::Device::new(
+            pdevice,
+            &vk::PhysicalDeviceFeatures::default(),
+            &[],
+        ));
+        let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));
         Self {
             ui_platform,
             size,
@@ -26,4 +42,8 @@ impl Engine {
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
         self.ui_platform.handle_event(event);
     }
+
+    pub fn update(&mut self) {}
+
+    pub fn render(&self) {}
 }

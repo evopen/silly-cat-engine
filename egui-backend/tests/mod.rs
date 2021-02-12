@@ -39,7 +39,7 @@ fn test_all() {
         ));
 
         let surface = Arc::new(Surface::new(instance.clone(), &window));
-        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), Some(&surface)));
+        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), Some(surface)));
         let device = Arc::new(Device::new(
             pdevice.clone(),
             &vk::PhysicalDeviceFeatures::default(),
@@ -62,7 +62,7 @@ fn test_all() {
 
         let image_available_semaphore = Arc::new(BinarySemaphore::new(device.clone()));
         let render_finish_semaphore = Arc::new(BinarySemaphore::new(device.clone()));
-        let mut swapchain = Arc::new(Swapchain::new(device.clone(), surface.clone()));
+        let swapchain = Arc::new(Swapchain::new(device.clone()));
         let command_pool = Arc::new(CommandPool::new(device.clone()));
         let swapchain_images = safe_vk::Image::from_swapchain(swapchain.clone())
             .into_iter()
@@ -76,60 +76,62 @@ fn test_all() {
             platform.handle_event(&event);
             match event {
                 winit::event::Event::NewEvents(_) => {}
-                winit::event::Event::WindowEvent { window_id, event } => match event {
-                    winit::event::WindowEvent::Resized(_) => {}
-                    winit::event::WindowEvent::Moved(_) => {}
-                    winit::event::WindowEvent::CloseRequested => {
-                        *control_flow = winit::event_loop::ControlFlow::Exit
+                winit::event::Event::WindowEvent { window_id, event } => {
+                    match event {
+                        winit::event::WindowEvent::Resized(_) => {}
+                        winit::event::WindowEvent::Moved(_) => {}
+                        winit::event::WindowEvent::CloseRequested => {
+                            *control_flow = winit::event_loop::ControlFlow::Exit
+                        }
+                        winit::event::WindowEvent::Destroyed => {}
+                        winit::event::WindowEvent::DroppedFile(_) => {}
+                        winit::event::WindowEvent::HoveredFile(_) => {}
+                        winit::event::WindowEvent::HoveredFileCancelled => {}
+                        winit::event::WindowEvent::ReceivedCharacter(_) => {}
+                        winit::event::WindowEvent::Focused(_) => {}
+                        winit::event::WindowEvent::KeyboardInput {
+                            device_id,
+                            input,
+                            is_synthetic,
+                        } => {}
+                        winit::event::WindowEvent::ModifiersChanged(_) => {}
+                        winit::event::WindowEvent::CursorMoved {
+                            device_id,
+                            position,
+                            modifiers,
+                        } => {}
+                        winit::event::WindowEvent::CursorEntered { device_id } => {}
+                        winit::event::WindowEvent::CursorLeft { device_id } => {}
+                        winit::event::WindowEvent::MouseWheel {
+                            device_id,
+                            delta,
+                            phase,
+                            modifiers,
+                        } => {}
+                        winit::event::WindowEvent::MouseInput {
+                            device_id,
+                            state,
+                            button,
+                            modifiers,
+                        } => {}
+                        winit::event::WindowEvent::TouchpadPressure {
+                            device_id,
+                            pressure,
+                            stage,
+                        } => {}
+                        winit::event::WindowEvent::AxisMotion {
+                            device_id,
+                            axis,
+                            value,
+                        } => {}
+                        winit::event::WindowEvent::Touch(_) => {}
+                        winit::event::WindowEvent::ScaleFactorChanged {
+                            scale_factor,
+                            new_inner_size,
+                        } => {}
+                        winit::event::WindowEvent::ThemeChanged(_) => {}
                     }
-                    winit::event::WindowEvent::Destroyed => {}
-                    winit::event::WindowEvent::DroppedFile(_) => {}
-                    winit::event::WindowEvent::HoveredFile(_) => {}
-                    winit::event::WindowEvent::HoveredFileCancelled => {}
-                    winit::event::WindowEvent::ReceivedCharacter(_) => {}
-                    winit::event::WindowEvent::Focused(_) => {}
-                    winit::event::WindowEvent::KeyboardInput {
-                        device_id,
-                        input,
-                        is_synthetic,
-                    } => {}
-                    winit::event::WindowEvent::ModifiersChanged(_) => {}
-                    winit::event::WindowEvent::CursorMoved {
-                        device_id,
-                        position,
-                        modifiers,
-                    } => {}
-                    winit::event::WindowEvent::CursorEntered { device_id } => {}
-                    winit::event::WindowEvent::CursorLeft { device_id } => {}
-                    winit::event::WindowEvent::MouseWheel {
-                        device_id,
-                        delta,
-                        phase,
-                        modifiers,
-                    } => {}
-                    winit::event::WindowEvent::MouseInput {
-                        device_id,
-                        state,
-                        button,
-                        modifiers,
-                    } => {}
-                    winit::event::WindowEvent::TouchpadPressure {
-                        device_id,
-                        pressure,
-                        stage,
-                    } => {}
-                    winit::event::WindowEvent::AxisMotion {
-                        device_id,
-                        axis,
-                        value,
-                    } => {}
-                    winit::event::WindowEvent::Touch(_) => {}
-                    winit::event::WindowEvent::ScaleFactorChanged {
-                        scale_factor,
-                        new_inner_size,
-                    } => {}
-                    winit::event::WindowEvent::ThemeChanged(_) => {}
-                },
+                }
                 winit::event::Event::DeviceEvent { device_id, event } => {}
                 winit::event::Event::UserEvent(_) => {}
                 winit::event::Event::Suspended => {}

@@ -62,7 +62,7 @@ fn test_all() {
             surface_extensions.as_slice(),
         ));
         let surface = Arc::new(Surface::new(instance.clone(), &window));
-        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), Some(&surface)));
+        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), Some(surface)));
         let device = Arc::new(Device::new(
             pdevice.clone(),
             &vk::PhysicalDeviceFeatures::default(),
@@ -99,7 +99,7 @@ fn test_all() {
 
         let command_pool = Arc::new(CommandPool::new(device.clone()));
 
-        let swapchain = Arc::new(Swapchain::new(device.clone(), surface.clone()));
+        let swapchain = Arc::new(Swapchain::new(device.clone()));
 
         let image = Image::new(
             allocator.clone(),

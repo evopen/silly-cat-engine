@@ -145,10 +145,11 @@ pub struct PhysicalDevice {
     handle: vk::PhysicalDevice,
     instance: Arc<Instance>,
     queue_family_index: u32,
+    surface: Option<Arc<Surface>>,
 }
 
 impl PhysicalDevice {
-    pub fn new(instance: Arc<Instance>, surface: Option<&Surface>) -> Self {
+    pub fn new(instance: Arc<Instance>, surface: Option<Arc<Surface>>) -> Self {
         let surface_loader = &instance.surface_loader;
         let pdevices =
             unsafe { instance.handle.enumerate_physical_devices() }.expect("Physical device error");
@@ -165,7 +166,7 @@ impl PhysicalDevice {
                         return None;
                     }
 
-                    let a = match surface {
+                    let a = match &surface {
                         Some(surface) => {
                             queue_families_props
                                 .iter()
@@ -215,6 +216,7 @@ impl PhysicalDevice {
                 handle: pdevice,
                 instance,
                 queue_family_index: queue_family_index as u32,
+                surface,
             }
         }
     }
@@ -1265,7 +1267,8 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> Self {
+    pub fn new(device: Arc<Device>) -> Self {
+        let surface = device.pdevice.surface.as_ref().unwrap().clone();
         unsafe {
             let surface_loader = &device.pdevice.instance.surface_loader;
             let surface_capabilities = surface_loader

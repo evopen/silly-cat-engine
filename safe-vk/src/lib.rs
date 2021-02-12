@@ -9,6 +9,7 @@ use vk::Handle;
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
 use std::ffi::{CStr, CString};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 pub use ash::vk;
@@ -147,46 +148,64 @@ pub struct PhysicalDevice {
 }
 
 impl PhysicalDevice {
-    pub fn new(instance: Arc<Instance>, surface: &Surface) -> Self {
-        let surface_loader =
-            ash::extensions::khr::Surface::new(&instance.entry.handle, &instance.handle);
+    pub fn new(instance: Arc<Instance>, surface: Option<&Surface>) -> Self {
+        let surface_loader = &instance.surface_loader;
         let pdevices =
             unsafe { instance.handle.enumerate_physical_devices() }.expect("Physical device error");
 
         unsafe {
             let (pdevice, queue_family_index) = pdevices
                 .iter()
-                .map(|pdevice| {
+                .filter_map(|pdevice| {
                     let prop = instance.handle.get_physical_device_properties(*pdevice);
-
-                    instance
+                    let queue_families_props = instance
                         .handle
-                        .get_physical_device_queue_family_properties(*pdevice)
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, ref info)| {
-                            let supports_graphic_and_surface =
-                                info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                                    && surface_loader
-                                        .get_physical_device_surface_support(
-                                            *pdevice,
-                                            index as u32,
-                                            surface.handle,
-                                        )
-                                        .unwrap();
-                            if supports_graphic_and_surface
-                                && prop.device_type == vk::PhysicalDeviceType::DISCRETE_GPU
-                            {
-                                Some((*pdevice, index))
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
+                        .get_physical_device_queue_family_properties(*pdevice);
+                    if prop.device_type == vk::PhysicalDeviceType::INTEGRATED_GPU {
+                        return None;
+                    }
+
+                    let a = match surface {
+                        Some(surface) => queue_families_props
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, info)| {
+                                let supports_graphic_and_surface =
+                                    info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                                        && surface_loader
+                                            .get_physical_device_surface_support(
+                                                *pdevice,
+                                                index as u32,
+                                                surface.handle,
+                                            )
+                                            .unwrap();
+                                if supports_graphic_and_surface {
+                                    Some((*pdevice, index))
+                                } else {
+                                    None
+                                }
+                            })
+                            .next()
+                            .unwrap(),
+                        None => queue_families_props
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, info)| {
+                                let supports_graphic =
+                                    info.queue_flags.contains(vk::QueueFlags::GRAPHICS);
+                                if supports_graphic {
+                                    Some((*pdevice, index))
+                                } else {
+                                    None
+                                }
+                            })
+                            .next()
+                            .unwrap(),
+                    };
+                    Some(a)
                 })
-                .filter_map(|v| v)
                 .next()
-                .expect("Couldn't find suitable device.");
+                .unwrap();
 
             Self {
                 handle: pdevice,
@@ -306,6 +325,10 @@ impl Device {
                 swapchain_loader,
             }
         }
+    }
+
+    pub fn pdevice(&self) -> &PhysicalDevice {
+        &self.pdevice
     }
 }
 
@@ -484,14 +507,14 @@ impl Buffer {
         data: I,
     ) -> Self {
         let data = data.as_ref();
-        let buffer = Arc::new(Self::new(
+        let buffer = Self::new(
             allocator.clone(),
             data.len(),
             buffer_usage
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::TRANSFER_DST,
             memory_usage,
-        ));
+        );
         if buffer.is_device_local() {
             let staging_buffer = Arc::new(Self::new(
                 allocator.clone(),
@@ -501,10 +524,10 @@ impl Buffer {
             ));
             staging_buffer.copy_from(data);
             let mut cmd_buf = CommandBuffer::new(command_pool);
-            cmd_buf.encode(|manager| {
-                manager.copy_buffer(
-                    staging_buffer,
-                    buffer.clone(),
+            cmd_buf.encode(|manager| unsafe {
+                manager.copy_buffer_raw(
+                    &staging_buffer,
+                    &buffer,
                     &[vk::BufferCopy::builder().size(data.len() as u64).build()],
                 );
             });
@@ -518,7 +541,7 @@ impl Buffer {
             );
             timeline_semaphore.wait_for(1);
         }
-        Arc::try_unwrap(buffer).unwrap()
+        buffer
     }
 
     pub fn map(&mut self) -> *mut u8 {
@@ -688,13 +711,13 @@ impl Queue {
             let in_use = Arc::new(Mutex::new(true));
             let in_use_signaler = in_use.clone();
 
+            self.command_buffers
+                .insert(command_buffer.handle, (in_use, command_buffer));
+
             tokio::task::spawn(async move {
                 fence.wait();
                 *in_use_signaler.lock().unwrap() = false;
             });
-
-            self.command_buffers
-                .insert(command_buffer.handle, (in_use, command_buffer));
         }
     }
 
@@ -997,14 +1020,20 @@ pub struct CommandRecorder<'a> {
 impl<'a> CommandRecorder<'a> {
     pub fn copy_buffer(&mut self, src: Arc<Buffer>, dst: Arc<Buffer>, region: &[vk::BufferCopy]) {
         unsafe {
+            self.copy_buffer_raw(src.as_ref(), dst.as_ref(), region);
+        }
+        self.command_buffer.resources.push(src);
+        self.command_buffer.resources.push(dst);
+    }
+
+    unsafe fn copy_buffer_raw(&mut self, src: &Buffer, dst: &Buffer, region: &[vk::BufferCopy]) {
+        unsafe {
             self.device().handle.cmd_copy_buffer(
                 self.command_buffer.handle,
                 src.handle,
                 dst.handle,
                 region,
             );
-            self.command_buffer.resources.push(src);
-            self.command_buffer.resources.push(dst);
         }
     }
 
@@ -1105,6 +1134,41 @@ impl<'a> CommandRecorder<'a> {
     unsafe fn set_image_layout_raw(&mut self, image: &Image, new_layout: vk::ImageLayout) {
         cmd_set_image_layout(image.layout, &self.command_buffer, image.handle, new_layout);
     }
+
+    fn build_acceleration_structure(
+        &mut self,
+        acceleration_structure: Arc<AccelerationStructure>,
+        infos: &[vk::AccelerationStructureBuildGeometryInfoKHR],
+        build_range_infos: &[&[vk::AccelerationStructureBuildRangeInfoKHR]],
+    ) {
+        unsafe {
+            self.device()
+                .acceleration_structure_loader
+                .cmd_build_acceleration_structures(
+                    self.command_buffer.handle,
+                    infos,
+                    build_range_infos,
+                );
+        }
+        self.command_buffer.resources.push(acceleration_structure);
+    }
+
+    fn build_acceleration_structure_raw(
+        &mut self,
+        acceleration_structure: &AccelerationStructure,
+        infos: &[vk::AccelerationStructureBuildGeometryInfoKHR],
+        build_range_infos: &[&[vk::AccelerationStructureBuildRangeInfoKHR]],
+    ) {
+        unsafe {
+            self.device()
+                .acceleration_structure_loader
+                .cmd_build_acceleration_structures(
+                    self.command_buffer.handle,
+                    infos,
+                    build_range_infos,
+                );
+        }
+    }
 }
 
 trait Resource {}
@@ -1118,6 +1182,7 @@ impl Resource for Framebuffer {}
 impl Resource for GraphicsPipeline {}
 impl Resource for DescriptorSet {}
 impl Resource for PipelineLayout {}
+impl Resource for AccelerationStructure {}
 
 pub struct CommandBuffer {
     handle: vk::CommandBuffer,
@@ -1339,12 +1404,12 @@ pub struct Image {
 impl Image {
     pub fn new(
         allocator: Arc<Allocator>,
+        format: vk::Format,
         width: u32,
         height: u32,
         image_usage: vk::ImageUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
     ) -> Self {
-        let format = vk::Format::B8G8R8A8_UNORM;
         let (handle, allocation, allocation_info) = allocator
             .handle
             .create_image(
@@ -1385,6 +1450,39 @@ impl Image {
             image_type,
             format,
         }
+    }
+
+    pub fn new_init_host<I: AsRef<[u8]>>(
+        allocator: Arc<Allocator>,
+        format: vk::Format,
+        width: u32,
+        height: u32,
+        image_usage: vk::ImageUsageFlags,
+        memory_usage: vk_mem::MemoryUsage,
+        queue: &mut Queue,
+        command_pool: Arc<CommandPool>,
+        data: I,
+    ) -> Self {
+        let mut image = Self::new(
+            allocator.clone(),
+            format,
+            width,
+            height,
+            image_usage,
+            memory_usage,
+        );
+        let data = data.as_ref();
+
+        let staging_buffer = Buffer::new_init_host(
+            allocator.clone(),
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            MemoryUsage::CpuToGpu,
+            data,
+        );
+
+        image.copy_from_buffer(&staging_buffer, queue, command_pool.clone());
+
+        image
     }
 
     pub fn copy_from_buffer(
@@ -2158,110 +2256,143 @@ impl ShaderStage {
     }
 }
 
-// pub struct AccelerationStructure {
-//     handle: vk::AccelerationStructureKHR,
-//     as_buffer: Buffer,
-//     device_address: u64,
-// }
+pub struct AccelerationStructure {
+    handle: vk::AccelerationStructureKHR,
+    as_buffer: Buffer,
+    device_address: u64,
+    device: Arc<Device>,
+}
 
-// impl AccelerationStructure {
-//     pub fn new(
-//         allocator: Arc<Allocator>,
-//         geometries: &[vk::AccelerationStructureGeometryKHR],
-//         as_type: vk::AccelerationStructureTypeKHR,
-//         primitive_count: u32,
-//         queue: &Queue,
-//     ) -> Result<Self> {
-//         unsafe {
-//             let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
-//                 .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-//                 .ty(as_type)
-//                 .geometries(geometries);
-//             let size_info = allocator
-//                 .device
-//                 .acceleration_structure_loader
-//                 .get_acceleration_structure_build_sizes(
-//                     allocator.device.handle.handle(),
-//                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
-//                     &build_geometry_info,
-//                     &[1],
-//                 );
-//             let as_buffer = Buffer::new(
-//                 allocator.clone(),
-//                 size_info.acceleration_structure_size,
-//                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-//                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-//                 vk_mem::MemoryUsage::GpuOnly,
-//             );
+impl AccelerationStructure {
+    pub fn new(
+        name: Option<&str>,
+        allocator: Arc<Allocator>,
+        geometries: &[vk::AccelerationStructureGeometryKHR],
+        as_type: vk::AccelerationStructureTypeKHR,
+        primitive_count: u32,
+        queue: &mut Queue,
+        command_pool: Arc<CommandPool>,
+    ) -> Self {
+        unsafe {
+            let size_info = allocator
+                .device
+                .acceleration_structure_loader
+                .get_acceleration_structure_build_sizes(
+                    allocator.device.handle.handle(),
+                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                    &vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                        .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+                        .ty(as_type)
+                        .geometries(geometries)
+                        .build(),
+                    &[],
+                );
+            let as_buffer = Buffer::new(
+                allocator.clone(),
+                size_info.acceleration_structure_size,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk_mem::MemoryUsage::GpuOnly,
+            );
 
-//             let handle = allocator
-//                 .device
-//                 .acceleration_structure_loader
-//                 .create_acceleration_structure(
-//                     &vk::AccelerationStructureCreateInfoKHR::builder()
-//                         .ty(as_type)
-//                         .buffer(as_buffer.handle)
-//                         .size(size_info.acceleration_structure_size)
-//                         .build(),
-//                     None,
-//                 )?;
+            let handle = allocator
+                .device
+                .acceleration_structure_loader
+                .create_acceleration_structure(
+                    &vk::AccelerationStructureCreateInfoKHR::builder()
+                        .ty(as_type)
+                        .buffer(as_buffer.handle)
+                        .size(size_info.acceleration_structure_size)
+                        .build(),
+                    None,
+                )
+                .unwrap();
 
-//             let scratch_buffer = Buffer::new(
-//                 allocator.clone(),
-//                 size_info.build_scratch_size,
-//                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-//                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-//                 vk_mem::MemoryUsage::GpuOnly,
-//             );
+            let device = allocator.device.clone();
 
-//             let build_geometry_info = build_geometry_info
-//                 .dst_acceleration_structure(handle)
-//                 .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-//                 .scratch_data(vk::DeviceOrHostAddressKHR {
-//                     device_address: scratch_buffer.device_address(),
-//                 });
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::ACCELERATION_STRUCTURE_KHR)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
 
-//             let build_range_info = vk::AccelerationStructureBuildRangeInfoKHR::builder()
-//                 .first_vertex(0)
-//                 .primitive_offset(0)
-//                 .transform_offset(0)
-//                 .primitive_count(primitive_count)
-//                 .build();
+            let scratch_buffer = Buffer::new(
+                allocator.clone(),
+                size_info.build_scratch_size,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                vk_mem::MemoryUsage::GpuOnly,
+            );
 
-//             let command_buffer = CommandBuffer::new(&vulkan.device, vulkan.command_pool)?;
-//             command_buffer.begin()?;
-//             vulkan
-//                 .acceleration_structure_loader
-//                 .cmd_build_acceleration_structures(
-//                     command_buffer.handle(),
-//                     &[build_geometry_info.build()],
-//                     &[&[build_range_info]],
-//                 );
-//             command_buffer.end()?;
-//             queue.submit_binary(command_buffer, &[], &[], &[])?.wait()?;
+            let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+                .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+                .ty(as_type)
+                .geometries(geometries)
+                .dst_acceleration_structure(handle)
+                .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+                .scratch_data(vk::DeviceOrHostAddressKHR {
+                    device_address: scratch_buffer.device_address(),
+                })
+                .build();
 
-//             let device_address = vulkan
-//                 .acceleration_structure_loader
-//                 .get_acceleration_structure_device_address(
-//                     vulkan.device.handle(),
-//                     &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-//                         .acceleration_structure(handle)
-//                         .build(),
-//                 );
+            let build_range_info = vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                .first_vertex(0)
+                .primitive_offset(0)
+                .transform_offset(0)
+                .primitive_count(primitive_count)
+                .build();
 
-//             Ok(Self {
-//                 handle,
-//                 as_buffer,
-//                 device_address,
-//             })
-//         }
-//     }
+            let device_address = device
+                .acceleration_structure_loader
+                .get_acceleration_structure_device_address(
+                    device.handle.handle(),
+                    &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                        .acceleration_structure(handle)
+                        .build(),
+                );
+            let result = Self {
+                handle,
+                as_buffer,
+                device_address,
+                device,
+            };
 
-//     pub fn device_address(&self) -> u64 {
-//         self.device_address
-//     }
+            let mut command_buffer = CommandBuffer::new(command_pool.clone());
+            command_buffer.encode(|recorder| {
+                recorder.build_acceleration_structure_raw(
+                    &result,
+                    &[build_geometry_info],
+                    &[&[build_range_info]],
+                )
+            });
 
-//     pub fn handle(&self) -> vk::AccelerationStructureKHR {
-//         self.handle
-//     }
-// }
+            queue.submit_binary(command_buffer, &[], &[], &[]).wait();
+
+            result
+        }
+    }
+
+    pub fn device_address(&self) -> u64 {
+        self.device_address
+    }
+}
+
+impl Drop for AccelerationStructure {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .acceleration_structure_loader
+                .destroy_acceleration_structure(self.handle, None);
+        }
+    }
+}

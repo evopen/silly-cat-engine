@@ -3,7 +3,8 @@ members = [
     "tracer",
     "safe-vk",
     "xtask",
-    "egui-backend"
+    "egui-backend",
+    "gltf-wrapper"
 ]
 
 

@@ -39,7 +39,7 @@ fn test_all() {
         ));
 
         let surface = Arc::new(Surface::new(instance.clone(), &window));
-        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), &surface));
+        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), Some(&surface)));
         let device = Arc::new(Device::new(
             pdevice.clone(),
             &vk::PhysicalDeviceFeatures::default(),
@@ -166,10 +166,6 @@ fn test_all() {
                             swapchain_images[index as usize].clone(),
                             &paint_jobs,
                             &screen_descriptor,
-                        );
-                        recorder.set_image_layout(
-                            swapchain_images[index as usize].clone(),
-                            vk::ImageLayout::PRESENT_SRC_KHR,
                         );
                     });
                     fence.wait();

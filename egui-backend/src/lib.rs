@@ -425,6 +425,7 @@ impl UiPass {
     fn egui_texture_to_gpu(&mut self, egui_texture: &egui::Texture) -> DescriptorSet {
         let mut image = Image::new(
             self.allocator.clone(),
+            vk::Format::B8G8R8A8_UNORM,
             egui_texture.width as u32,
             egui_texture.height as u32,
             vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,

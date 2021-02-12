@@ -62,7 +62,7 @@ fn test_all() {
             surface_extensions.as_slice(),
         ));
         let surface = Arc::new(Surface::new(instance.clone(), &window));
-        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), &surface));
+        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), Some(&surface)));
         let device = Arc::new(Device::new(
             pdevice.clone(),
             &vk::PhysicalDeviceFeatures::default(),
@@ -80,12 +80,12 @@ fn test_all() {
             1,
         );
 
-        let mut buffer = Buffer::new(
+        let mut buffer = Arc::new(Buffer::new(
             allocator.clone(),
             100,
             vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
-        );
+        ));
         let mut buffer_dst = Arc::new(Buffer::new(
             allocator.clone(),
             100,
@@ -93,7 +93,6 @@ fn test_all() {
             vk_mem::MemoryUsage::CpuToGpu,
         ));
         assert_eq!(buffer.size(), 100);
-        buffer.map();
         buffer.device_address();
         dbg!(vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw() & buffer.memory_type());
         let mut queue = Queue::new(device.clone());
@@ -104,6 +103,7 @@ fn test_all() {
 
         let image = Image::new(
             allocator.clone(),
+            vk::Format::B8G8R8A8_UNORM,
             123,
             234,
             vk::ImageUsageFlags::STORAGE,
@@ -113,11 +113,11 @@ fn test_all() {
         let images = Image::from_swapchain(swapchain.clone());
 
         println!("swapchain images created");
-        let command_buffer = CommandBuffer::new(command_pool.clone());
-        command_buffer.encode(|buf| {
-            buf.cmd_copy_buffer(
-                &buffer,
-                &buffer_dst,
+        let mut command_buffer = CommandBuffer::new(command_pool.clone());
+        command_buffer.encode(|recorder| {
+            recorder.copy_buffer(
+                buffer.clone(),
+                buffer_dst.clone(),
                 &[vk::BufferCopy::builder().size(buffer.size() as u64).build()],
             );
         });
@@ -131,13 +131,13 @@ fn test_all() {
             &[1],
         );
         semaphore.wait_for(1);
-        semaphore.signal(0);
+        semaphore.signal(2);
 
-        let command_buffer = CommandBuffer::new(command_pool.clone());
-        command_buffer.encode(|buf| {
-            buf.cmd_copy_buffer(
-                &buffer,
-                &buffer_dst,
+        let mut command_buffer = CommandBuffer::new(command_pool.clone());
+        command_buffer.encode(|recorder| {
+            recorder.copy_buffer(
+                buffer.clone(),
+                buffer_dst.clone(),
                 &[vk::BufferCopy::builder().size(buffer.size() as u64).build()],
             );
         });
@@ -175,6 +175,7 @@ fn test_all() {
 
         let image = Arc::new(Image::new(
             allocator.clone(),
+            vk::Format::B8G8R8A8_UNORM,
             800,
             600,
             vk::ImageUsageFlags::SAMPLED,

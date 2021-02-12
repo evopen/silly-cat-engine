@@ -67,6 +67,7 @@ pub struct UiPass {
     descriptor_pool: Arc<safe_vk::DescriptorPool>,
     command_pool: Arc<safe_vk::CommandPool>,
     queue: Arc<Mutex<safe_vk::Queue>>,
+    paint_jobs: egui::PaintJobs,
 }
 
 impl UiPass {
@@ -280,6 +281,7 @@ impl UiPass {
             descriptor_pool,
             queue,
             command_pool,
+            paint_jobs: Vec::new(),
         }
     }
 
@@ -287,7 +289,6 @@ impl UiPass {
         &mut self,
         recorder: &mut CommandRecorder,
         color_attachment: Arc<Image>,
-        paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
     ) {
         let image_view = Arc::new(ImageView::new(color_attachment.clone()));
@@ -311,7 +312,8 @@ impl UiPass {
                         pipeline.layout(),
                         0,
                     );
-                    for (((clip_rect, triangles), vertex_buffer), index_buffer) in paint_jobs
+                    for (((clip_rect, triangles), vertex_buffer), index_buffer) in self
+                        .paint_jobs
                         .iter()
                         .zip(self.vertex_buffers.iter())
                         .zip(self.index_buffers.iter())
@@ -474,6 +476,7 @@ impl UiPass {
         paint_jobs: &[egui::paint::PaintJob],
         screen_descriptor: &ScreenDescriptor,
     ) {
+        self.paint_jobs = paint_jobs.to_owned();
         let index_size = self.index_buffers.len();
         let vertex_size = self.vertex_buffers.len();
 

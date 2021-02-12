@@ -20,6 +20,7 @@ impl Scene {
             .iter()
             .map(|data| {
                 safe_vk::Buffer::new_init_host(
+                    Some("gltf buffer"),
                     allocator.clone(),
                     vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
                     safe_vk::MemoryUsage::CpuToGpu,

@@ -60,7 +60,6 @@ fn test_all() {
                 style: Default::default(),
             });
 
-        let image_available_semaphore = Arc::new(BinarySemaphore::new(device.clone()));
         let render_finish_semaphore = Arc::new(BinarySemaphore::new(device.clone()));
         let swapchain = Arc::new(Swapchain::new(device.clone()));
         let command_pool = Arc::new(CommandPool::new(device.clone()));
@@ -155,8 +154,7 @@ fn test_all() {
                     };
                     ui_pass.update_buffers(&paint_jobs, &screen_descriptor);
 
-                    let (index, _) =
-                        swapchain.acquire_next_image(image_available_semaphore.clone());
+                    let (index, _) = swapchain.acquire_next_image();
                     let mut command_buffer = CommandBuffer::new(command_pool.clone());
                     command_buffer.encode(|recorder| {
                         recorder.set_image_layout(
@@ -173,7 +171,7 @@ fn test_all() {
                     fence.wait();
                     fence = queue.submit_binary(
                         command_buffer,
-                        &[&image_available_semaphore],
+                        &[&swapchain.image_available_semaphore()],
                         &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
                         &[&render_finish_semaphore],
                     );

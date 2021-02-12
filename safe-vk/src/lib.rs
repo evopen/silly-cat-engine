@@ -31,6 +31,10 @@ pub mod name {
                 pub const DEBUG_UTILS: &str = "VK_EXT_debug_utils";
                 // pub const DEBUG_MARKER: &str = "VK_EXT_debug_marker";
             }
+            pub mod khr {
+                pub const WIN32_SURFACE: &str = "VK_KHR_win32_surface";
+                pub const SURFACE: &str = "VK_KHR_surface";
+            }
         }
     }
     pub mod device {
@@ -38,7 +42,7 @@ pub mod name {
         pub mod extension {
             pub mod khr {
                 pub const SWAPCHAIN: &str = "VK_KHR_swapchain";
-                pub const DEFERED_HOST_OPERATION: &str = "VK_KHR_deferred_host_operations";
+                pub const DEFERRED_HOST_OPERATIONS: &str = "VK_KHR_deferred_host_operations";
                 pub const RAY_TRACING_PIPELINE: &str = "VK_KHR_ray_tracing_pipeline";
                 pub const ACCELERATION_STRUCTURE: &str = "VK_KHR_acceleration_structure";
             }
@@ -437,6 +441,7 @@ impl std::fmt::Debug for Buffer {
 
 impl Buffer {
     pub fn new<I>(
+        name: Option<&str>,
         allocator: Arc<Allocator>,
         size: I,
         buffer_usage: vk::BufferUsageFlags,
@@ -463,7 +468,23 @@ impl Buffer {
             )
             .unwrap();
 
+        let device = &allocator.device;
         unsafe {
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::BUFFER)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
             let device_address = allocator.device.handle.get_buffer_device_address(
                 &vk::BufferDeviceAddressInfo::builder()
                     .buffer(handle)
@@ -483,6 +504,7 @@ impl Buffer {
     }
 
     pub fn new_init_host<I: AsRef<[u8]>>(
+        name: Option<&str>,
         allocator: Arc<Allocator>,
         buffer_usage: vk::BufferUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
@@ -490,6 +512,7 @@ impl Buffer {
     ) -> Self {
         let data = data.as_ref();
         let mut buffer = Self::new(
+            name,
             allocator.clone(),
             data.len(),
             buffer_usage
@@ -505,6 +528,7 @@ impl Buffer {
     }
 
     pub fn new_init_device<I: AsRef<[u8]>>(
+        name: Option<&str>,
         allocator: Arc<Allocator>,
         buffer_usage: vk::BufferUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
@@ -514,6 +538,7 @@ impl Buffer {
     ) -> Self {
         let data = data.as_ref();
         let buffer = Self::new(
+            name,
             allocator.clone(),
             data.len(),
             buffer_usage
@@ -523,6 +548,7 @@ impl Buffer {
         );
         if buffer.is_device_local() {
             let staging_buffer = Arc::new(Self::new(
+                Some("staging buffer"),
                 allocator.clone(),
                 data.len(),
                 vk::BufferUsageFlags::TRANSFER_SRC,
@@ -1264,6 +1290,7 @@ pub struct Swapchain {
     surface: Arc<Surface>,
     extent: vk::Extent2D,
     format: vk::Format,
+    image_available_semaphore: BinarySemaphore,
 }
 
 impl Swapchain {
@@ -1300,6 +1327,7 @@ impl Swapchain {
                 .swapchain_loader
                 .create_swapchain(&swapchain_create_info, None)
                 .unwrap();
+            let image_available_semaphore = BinarySemaphore::new(device.clone());
 
             Self {
                 handle,
@@ -1307,16 +1335,22 @@ impl Swapchain {
                 surface,
                 extent: surface_capabilities.current_extent,
                 format,
+                image_available_semaphore,
             }
         }
     }
 
-    pub fn acquire_next_image(&self, semaphore: Arc<BinarySemaphore>) -> (u32, bool) {
+    pub fn acquire_next_image(&self) -> (u32, bool) {
         unsafe {
             let (index, sub) = self
                 .device
                 .swapchain_loader
-                .acquire_next_image(self.handle, 0, semaphore.handle, vk::Fence::null())
+                .acquire_next_image(
+                    self.handle,
+                    0,
+                    self.image_available_semaphore.handle,
+                    vk::Fence::null(),
+                )
                 .unwrap();
             (index, sub)
         }
@@ -1356,6 +1390,10 @@ impl Swapchain {
                 .unwrap();
             self.extent = surface_capabilities.current_extent;
         }
+    }
+
+    pub fn image_available_semaphore(&self) -> &BinarySemaphore {
+        &self.image_available_semaphore
     }
 }
 
@@ -1462,6 +1500,7 @@ impl Image {
         let data = data.as_ref();
 
         let staging_buffer = Buffer::new_init_host(
+            Some("staging buffer"),
             allocator.clone(),
             vk::BufferUsageFlags::TRANSFER_SRC,
             MemoryUsage::CpuToGpu,
@@ -2280,6 +2319,10 @@ impl AccelerationStructure {
                     &[],
                 );
             let as_buffer = Buffer::new(
+                Some(&format!(
+                    "{} buffer",
+                    name.unwrap_or("acceleration structure")
+                )),
                 allocator.clone(),
                 size_info.acceleration_structure_size,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
@@ -2319,6 +2362,10 @@ impl AccelerationStructure {
             }
 
             let scratch_buffer = Buffer::new(
+                Some(&format!(
+                    "{} scratch buffer",
+                    name.unwrap_or("acceleration structure")
+                )),
                 allocator.clone(),
                 size_info.build_scratch_size,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR

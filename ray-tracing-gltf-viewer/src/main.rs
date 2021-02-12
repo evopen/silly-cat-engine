@@ -16,7 +16,9 @@ fn main() {
                     match event {
                         winit::event::WindowEvent::Resized(_) => {}
                         winit::event::WindowEvent::Moved(_) => {}
-                        winit::event::WindowEvent::CloseRequested => {}
+                        winit::event::WindowEvent::CloseRequested => {
+                            *control_flow = winit::event_loop::ControlFlow::Exit;
+                        }
                         winit::event::WindowEvent::Destroyed => {}
                         winit::event::WindowEvent::DroppedFile(_) => {}
                         winit::event::WindowEvent::HoveredFile(_) => {}

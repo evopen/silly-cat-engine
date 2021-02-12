@@ -8,6 +8,9 @@ pub struct Engine {
     ui_platform: egui_winit_platform::Platform,
     size: winit::dpi::PhysicalSize<u32>,
     scale_factor: f64,
+    swapchain: Arc<safe_vk::Swapchain>,
+    queue: safe_vk::Queue,
+    ui_pass: egui_backend::UiPass,
 }
 
 impl Engine {
@@ -23,19 +26,41 @@ impl Engine {
                 style: Default::default(),
             });
         let entry = Arc::new(safe_vk::Entry::new().unwrap());
-        let instance = Arc::new(safe_vk::Instance::new(entry, &[], &[]));
+        let instance = Arc::new(safe_vk::Instance::new(
+            entry,
+            &[
+                safe_vk::name::instance::layer::khronos::VALIDATION,
+                safe_vk::name::instance::layer::lunarg::MONITOR,
+            ],
+            &[
+                safe_vk::name::instance::extension::khr::WIN32_SURFACE,
+                safe_vk::name::instance::extension::khr::SURFACE,
+                safe_vk::name::instance::extension::ext::DEBUG_UTILS,
+            ],
+        ));
         let surface = Arc::new(safe_vk::Surface::new(instance.clone(), window));
+
         let pdevice = Arc::new(safe_vk::PhysicalDevice::new(instance, Some(surface)));
         let device = Arc::new(safe_vk::Device::new(
             pdevice,
             &vk::PhysicalDeviceFeatures::default(),
-            &[],
+            &[
+                safe_vk::name::device::extension::khr::SWAPCHAIN,
+                safe_vk::name::device::extension::khr::ACCELERATION_STRUCTURE,
+                safe_vk::name::device::extension::khr::DEFERRED_HOST_OPERATIONS,
+            ],
         ));
         let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));
+        let queue = safe_vk::Queue::new(device.clone());
+        let allocator = Arc::new(safe_vk::Allocator::new(device.clone()));
+        let ui_pass = egui_backend::UiPass::new(allocator.clone());
         Self {
             ui_platform,
             size,
             scale_factor,
+            swapchain,
+            queue,
+            ui_pass,
         }
     }
 
@@ -45,5 +70,12 @@ impl Engine {
 
     pub fn update(&mut self) {}
 
-    pub fn render(&self) {}
+    pub fn render(&self) {
+        let (index, _) = self.swapchain.acquire_next_image();
+        self.queue.present(
+            &self.swapchain,
+            index,
+            &[&self.swapchain.image_available_semaphore()],
+        )
+    }
 }

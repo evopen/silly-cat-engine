@@ -79,6 +79,7 @@ impl UiPass {
             safe_vk::ShaderModule::new(device.clone(), Shaders::get("egui.frag.spv").unwrap());
 
         let uniform_buffer = Arc::new(safe_vk::Buffer::new(
+            Some("uniform buffer"),
             allocator.clone(),
             std::mem::size_of::<UniformBuffer>(),
             vk::BufferUsageFlags::UNIFORM_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
@@ -384,10 +385,11 @@ impl UiPass {
 
     fn get_texture_descriptor_set(&self, texture_id: egui::TextureId) -> &Arc<DescriptorSet> {
         match texture_id {
-            egui::TextureId::Egui => self
-                .texture_descriptor_set
-                .as_ref()
-                .expect("egui texture was not set before the first draw"),
+            egui::TextureId::Egui => {
+                self.texture_descriptor_set
+                    .as_ref()
+                    .expect("egui texture was not set before the first draw")
+            }
             egui::TextureId::User(id) => {
                 let id = id as usize;
                 assert!(id < self.user_textures.len());
@@ -432,6 +434,7 @@ impl UiPass {
             MemoryUsage::GpuOnly,
         );
         let staging_buffer = Buffer::new_init_host(
+            Some("staging buffer"),
             self.allocator.clone(),
             vk::BufferUsageFlags::TRANSFER_SRC,
             MemoryUsage::CpuToGpu,
@@ -486,6 +489,7 @@ impl UiPass {
             if i < index_size {
                 if self.index_buffers[i].size() != data.len() {
                     self.index_buffers[i] = Arc::new(Buffer::new_init_host(
+                        Some("index buffer"),
                         self.allocator.clone(),
                         vk::BufferUsageFlags::INDEX_BUFFER,
                         MemoryUsage::CpuToGpu,
@@ -496,6 +500,7 @@ impl UiPass {
                 }
             } else {
                 let buffer = Buffer::new_init_host(
+                    Some("index buffer"),
                     self.allocator.clone(),
                     vk::BufferUsageFlags::INDEX_BUFFER,
                     MemoryUsage::CpuToGpu,
@@ -508,6 +513,7 @@ impl UiPass {
             if i < vertex_size {
                 if self.vertex_buffers[i].size() != data.len() {
                     self.vertex_buffers[i] = Arc::new(Buffer::new_init_host(
+                        Some("vertex buffer"),
                         self.allocator.clone(),
                         vk::BufferUsageFlags::VERTEX_BUFFER,
                         MemoryUsage::CpuToGpu,
@@ -518,6 +524,7 @@ impl UiPass {
                 }
             } else {
                 let buffer = Buffer::new_init_host(
+                    Some("vertex buffer"),
                     self.allocator.clone(),
                     vk::BufferUsageFlags::VERTEX_BUFFER,
                     MemoryUsage::CpuToGpu,

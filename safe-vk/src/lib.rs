@@ -1058,7 +1058,7 @@ impl<'a> CommandRecorder<'a> {
             self.bind_point = Some(vk::PipelineBindPoint::GRAPHICS);
             f(self, pipeline.as_ref());
         }
-        // self.command_buffer.resources.push(pipeline);
+        self.command_buffer.resources.push(pipeline);
     }
 
     fn device(&self) -> &Device {

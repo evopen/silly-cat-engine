@@ -883,6 +883,7 @@ impl Drop for CommandPool {
 pub trait GraphicsPipelineRecorder: PipelineRecorder {
     fn bind_index_buffer(&mut self, buffer: Arc<Buffer>, offset: u64, index_type: vk::IndexType);
     fn set_scissor(&self, scissors: &[vk::Rect2D]);
+    fn set_viewport(&self, viewport: vk::Viewport);
     fn bind_vertex_buffer(&mut self, buffers: Vec<Arc<Buffer>>, offsets: &[u64]);
     fn draw_indexed(&self, index_count: u32, instance_count: u32);
 }
@@ -976,6 +977,14 @@ impl<'a> GraphicsPipelineRecorder for CommandRecorder<'a> {
                 0,
                 0,
             );
+        }
+    }
+
+    fn set_viewport(&self, viewport: vk::Viewport) {
+        unsafe {
+            self.device()
+                .handle
+                .cmd_set_viewport(self.command_buffer.handle, 0, &[viewport]);
         }
     }
 }
@@ -2065,7 +2074,6 @@ impl DescriptorSet {
             })
             .collect::<Vec<_>>();
         assert_eq!(descriptor_writes.len(), update_infos.len());
-        dbg!(&update_infos.len());
         unsafe {
             device
                 .handle

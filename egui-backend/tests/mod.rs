@@ -141,7 +141,6 @@ fn test_all() {
 
                 let (_output, paint_commands) = platform.end_frame();
                 let paint_jobs = platform.context().tessellate(paint_commands);
-                dbg!(paint_jobs.len());
                 ui_pass.update_texture(&platform.context().texture());
                 let screen_descriptor = ScreenDescriptor {
                     physical_width: window.inner_size().width,

@@ -356,6 +356,14 @@ impl UiPass {
                                 },
                                 extent: vk::Extent2D { width, height },
                             }]);
+                            recorder.set_viewport(vk::Viewport {
+                                x: 0.0,
+                                y: 0.0,
+                                width: physical_width as f32,
+                                height: physical_height as f32,
+                                min_depth: 0.1,
+                                max_depth: 1.0,
+                            });
                         }
                         recorder.bind_descriptor_sets(
                             vec![self

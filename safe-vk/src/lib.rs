@@ -914,7 +914,7 @@ impl<'a> PipelineRecorder for CommandRecorder<'a> {
                 self.command_buffer.handle,
                 self.bind_point.unwrap(),
                 layout.handle,
-                0,
+                first_set,
                 descriptor_set_handles.as_slice(),
                 &[],
             );

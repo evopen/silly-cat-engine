@@ -12,7 +12,7 @@ fn main() {
             engine.handle_event(&event);
             match event {
                 winit::event::Event::NewEvents(_) => {}
-                winit::event::Event::WindowEvent { window_id, event } => {
+                winit::event::Event::WindowEvent { window_id: _, event } => {
                     match event {
                         winit::event::WindowEvent::Resized(_) => {}
                         winit::event::WindowEvent::Moved(_) => {}
@@ -26,49 +26,49 @@ fn main() {
                         winit::event::WindowEvent::ReceivedCharacter(_) => {}
                         winit::event::WindowEvent::Focused(_) => {}
                         winit::event::WindowEvent::KeyboardInput {
-                            device_id,
-                            input,
-                            is_synthetic,
+                            device_id: _,
+                            input: _,
+                            is_synthetic: _,
                         } => {}
                         winit::event::WindowEvent::ModifiersChanged(_) => {}
                         winit::event::WindowEvent::CursorMoved {
-                            device_id,
-                            position,
-                            modifiers,
+                            device_id: _,
+                            position: _,
+                            modifiers: _,
                         } => {}
-                        winit::event::WindowEvent::CursorEntered { device_id } => {}
-                        winit::event::WindowEvent::CursorLeft { device_id } => {}
+                        winit::event::WindowEvent::CursorEntered { device_id: _ } => {}
+                        winit::event::WindowEvent::CursorLeft { device_id: _ } => {}
                         winit::event::WindowEvent::MouseWheel {
-                            device_id,
-                            delta,
-                            phase,
-                            modifiers,
+                            device_id: _,
+                            delta: _,
+                            phase: _,
+                            modifiers: _,
                         } => {}
                         winit::event::WindowEvent::MouseInput {
-                            device_id,
-                            state,
-                            button,
-                            modifiers,
+                            device_id: _,
+                            state: _,
+                            button: _,
+                            modifiers: _,
                         } => {}
                         winit::event::WindowEvent::TouchpadPressure {
-                            device_id,
-                            pressure,
-                            stage,
+                            device_id: _,
+                            pressure: _,
+                            stage: _,
                         } => {}
                         winit::event::WindowEvent::AxisMotion {
-                            device_id,
-                            axis,
-                            value,
+                            device_id: _,
+                            axis: _,
+                            value: _,
                         } => {}
                         winit::event::WindowEvent::Touch(_) => {}
                         winit::event::WindowEvent::ScaleFactorChanged {
-                            scale_factor,
-                            new_inner_size,
+                            scale_factor: _,
+                            new_inner_size: _,
                         } => {}
                         winit::event::WindowEvent::ThemeChanged(_) => {}
                     }
                 }
-                winit::event::Event::DeviceEvent { device_id, event } => {}
+                winit::event::Event::DeviceEvent { device_id: _, event: _ } => {}
                 winit::event::Event::UserEvent(_) => {}
                 winit::event::Event::Suspended => {}
                 winit::event::Event::Resumed => {}

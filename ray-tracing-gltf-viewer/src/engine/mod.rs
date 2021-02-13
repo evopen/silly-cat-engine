@@ -1,8 +1,8 @@
-use std::borrow::Borrow;
+
 use std::sync::Arc;
 use std::time::Instant;
 
-use safe_vk::{CommandBuffer, Swapchain};
+
 
 use safe_vk::vk;
 
@@ -28,7 +28,7 @@ impl Engine {
             egui_winit_platform::Platform::new(egui_winit_platform::PlatformDescriptor {
                 physical_width: size.width,
                 physical_height: size.height,
-                scale_factor: scale_factor,
+                scale_factor,
                 font_definitions: Default::default(),
                 style: Default::default(),
             });
@@ -60,15 +60,15 @@ impl Engine {
         let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));
         let queue = safe_vk::Queue::new(device.clone());
         let allocator = Arc::new(safe_vk::Allocator::new(device.clone()));
-        let ui_pass = egui_backend::UiPass::new(allocator.clone());
+        let ui_pass = egui_backend::UiPass::new(allocator);
         let command_pool = Arc::new(safe_vk::CommandPool::new(device.clone()));
         let time = Instant::now();
         let swapchain_images = safe_vk::Image::from_swapchain(swapchain.clone())
             .into_iter()
-            .map(|image| Arc::new(image))
+            .map(Arc::new)
             .collect::<Vec<_>>();
         let render_finish_semaphore = safe_vk::BinarySemaphore::new(device.clone());
-        let render_finish_fence = Arc::new(safe_vk::Fence::new(device.clone(), true));
+        let render_finish_fence = Arc::new(safe_vk::Fence::new(device, true));
 
         Self {
             ui_platform,

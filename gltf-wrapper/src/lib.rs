@@ -213,7 +213,7 @@ impl Scene {
             Some("top level - mesh"),
             allocator.clone(),
             &[instance_geometry],
-            &[1],
+            &[instance_buffer_addresses.len() as u32],
             vk::AccelerationStructureTypeKHR::TOP_LEVEL,
         );
 

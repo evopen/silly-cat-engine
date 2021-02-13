@@ -5,7 +5,7 @@ members = [
     "xtask",
     "egui-backend",
     "gltf-wrapper",
-    "ray-tracing-gltf-viewer"
+    "gltf-viewer"
 ]
 
 

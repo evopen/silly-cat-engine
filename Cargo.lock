@@ -710,6 +710,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gltf-viewer"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "egui-backend",
+ "egui_winit_platform",
+ "safe-vk",
+ "tokio",
+ "winit",
+]
+
+[[package]]
 name = "gltf-wrapper"
 version = "0.1.0"
 dependencies = [
@@ -1313,18 +1325,6 @@ dependencies = [
  "core-graphics 0.22.2",
  "objc",
  "raw-window-handle",
-]
-
-[[package]]
-name = "ray-tracing-gltf-viewer"
-version = "0.1.0"
-dependencies = [
- "egui",
- "egui-backend",
- "egui_winit_platform",
- "safe-vk",
- "tokio",
- "winit",
 ]
 
 [[package]]

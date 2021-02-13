@@ -716,6 +716,8 @@ dependencies = [
  "egui",
  "egui-backend",
  "egui_winit_platform",
+ "gltf-wrapper",
+ "nfd2",
  "safe-vk",
  "tokio",
  "winit",
@@ -725,6 +727,7 @@ dependencies = [
 name = "gltf-wrapper"
 version = "0.1.0"
 dependencies = [
+ "glam",
  "gltf",
  "safe-vk",
 ]

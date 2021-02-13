@@ -8,7 +8,7 @@ use vk::Handle;
 
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
-use std::ffi::{CString};
+use std::ffi::CString;
 
 use std::sync::{Arc, Mutex};
 
@@ -45,6 +45,7 @@ pub mod name {
                 pub const DEFERRED_HOST_OPERATIONS: &str = "VK_KHR_deferred_host_operations";
                 pub const RAY_TRACING_PIPELINE: &str = "VK_KHR_ray_tracing_pipeline";
                 pub const ACCELERATION_STRUCTURE: &str = "VK_KHR_acceleration_structure";
+                pub const BUFFER_DEVICE_ADDRESS: &str = "VK_KHR_buffer_device_address";
             }
             mod ext {}
         }
@@ -2316,7 +2317,7 @@ impl AccelerationStructure {
                         .ty(as_type)
                         .geometries(geometries)
                         .build(),
-                    &[],
+                    primitive_counts,
                 );
             let as_buffer = Buffer::new(
                 Some(&format!(

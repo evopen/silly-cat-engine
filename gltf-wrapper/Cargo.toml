@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 gltf = "0.15.2"
 safe-vk = { path = "../safe-vk" }
+glam = { version = "0.12.0", features = ["bytemuck"] }

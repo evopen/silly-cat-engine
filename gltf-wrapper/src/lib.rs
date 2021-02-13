@@ -2,12 +2,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::unimplemented;
 
+use glam::u32;
 use safe_vk::vk;
 
 pub struct Scene {
     doc: gltf::Document,
     buffers: Vec<safe_vk::Buffer>,
     images: Vec<safe_vk::Image>,
+    bottom_level_acceleration_structures: Vec<safe_vk::AccelerationStructure>,
 }
 
 impl Scene {
@@ -32,7 +34,6 @@ impl Scene {
         let images = gltf_images
             .iter()
             .map(|image| {
-                println!("fuck");
                 let format = match image.format {
                     gltf::image::Format::R8 => vk::Format::R8_UNORM,
                     gltf::image::Format::R8G8 => vk::Format::R8G8_UNORM,
@@ -59,10 +60,111 @@ impl Scene {
             })
             .collect::<Vec<_>>();
 
+        assert_eq!(doc.scenes().len(), 1);
+        let scene = doc.scenes().next().unwrap();
+        for node in scene.nodes() {
+            let _transform = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
+        }
+
+        let bottom_level_acceleration_structures = doc
+            .meshes()
+            .map(|mesh| {
+                let (geometries, triangle_count): (Vec<_>, Vec<_>) = mesh
+                    .primitives()
+                    .map(|primitive| {
+                        let (index_type, index_data) = match primitive.indices() {
+                            Some(accessor) => {
+                                let index_type = match accessor.data_type() {
+                                    gltf::accessor::DataType::U16 => vk::IndexType::UINT16,
+                                    gltf::accessor::DataType::U32 => vk::IndexType::UINT32,
+                                    _ => {
+                                        panic!("not supported");
+                                    }
+                                };
+                                let offset =
+                                    (accessor.offset() + accessor.view().unwrap().offset()) as u64;
+                                let index = accessor.view().unwrap().buffer().index();
+                                accessor.view().unwrap().offset();
+                                (
+                                    index_type,
+                                    vk::DeviceOrHostAddressConstKHR {
+                                        device_address: buffers
+                                            .get(index)
+                                            .unwrap()
+                                            .device_address()
+                                            + offset,
+                                    },
+                                )
+                            }
+                            None => {
+                                (
+                                    vk::IndexType::NONE_KHR,
+                                    vk::DeviceOrHostAddressConstKHR::default(),
+                                )
+                            }
+                        };
+
+                        let (_, accessor) = primitive
+                            .attributes()
+                            .find(|(semantic, _)| semantic.eq(&gltf::Semantic::Positions))
+                            .unwrap();
+                        let vertex_format = match accessor.data_type() {
+                            gltf::accessor::DataType::F32 => vk::Format::R32G32B32_SFLOAT,
+                            _ => {
+                                panic!("fuck");
+                            }
+                        };
+                        let offset = (accessor.offset() + accessor.view().unwrap().offset()) as u64;
+                        let index = accessor.view().unwrap().buffer().index();
+                        let vertex_data = vk::DeviceOrHostAddressConstKHR {
+                            device_address: buffers.get(index).unwrap().device_address() + offset,
+                        };
+                        let vertex_stride = match accessor.dimensions() {
+                            gltf::accessor::Dimensions::Vec3 => {
+                                std::mem::size_of::<f32>() as u64 * 3
+                            }
+                            _ => {
+                                panic!("fuck");
+                            }
+                        };
+
+                        (
+                            vk::AccelerationStructureGeometryKHR::builder()
+                                .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+                                .flags(vk::GeometryFlagsKHR::OPAQUE)
+                                .geometry(vk::AccelerationStructureGeometryDataKHR {
+                                    triangles:
+                                        vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+                                            .index_type(index_type)
+                                            .index_data(index_data)
+                                            .vertex_data(vertex_data)
+                                            .vertex_format(vertex_format)
+                                            .vertex_stride(vertex_stride)
+                                            .max_vertex(std::u32::MAX)
+                                            .build(),
+                                })
+                                .build(),
+                            (primitive.indices().unwrap().count() / 3) as u32,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .unzip();
+                safe_vk::AccelerationStructure::new(
+                    Some("bottom level - mesh"),
+                    allocator.clone(),
+                    geometries.as_ref(),
+                    triangle_count.as_ref(),
+                    vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+                )
+            })
+            .collect::<Vec<_>>();
+
         Self {
             doc,
             buffers,
             images,
+            bottom_level_acceleration_structures,
         }
     }
 }

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use ash::vk;
-use bytemuck::{cast_slice, Pod};
-use vk::WHOLE_SIZE;
-use winit::event_loop::EventLoopWindowTarget;
-use winit::platform::windows::EventLoopExtWindows;
+
+
+
+
 
 use safe_vk::*;
 
@@ -28,13 +28,13 @@ fn test_create_entry() {
 fn test_create_instance() {
     let entry = Arc::new(Entry::new().unwrap());
     let window = create_window();
-    let surface_extensions = ash_window::enumerate_required_extensions(&window)
+    let _surface_extensions = ash_window::enumerate_required_extensions(&window)
         .unwrap()
         .iter()
         .map(|s| s.to_str().unwrap())
         .collect::<Vec<_>>();
-    let instance = Instance::new(
-        entry.clone(),
+    let _instance = Instance::new(
+        entry,
         &[
             safe_vk::name::instance::layer::khronos::VALIDATION,
             safe_vk::name::instance::layer::lunarg::MONITOR,
@@ -55,13 +55,13 @@ fn test_all() {
 
     rt.block_on(async {
         let entry = Arc::new(Entry::new().unwrap());
-        let surface_extensions = ash_window::enumerate_required_extensions(&window)
+        let _surface_extensions = ash_window::enumerate_required_extensions(&window)
             .unwrap()
             .iter()
             .map(|s| s.to_str().unwrap())
             .collect::<Vec<_>>();
         let instance = Arc::new(Instance::new(
-            entry.clone(),
+            entry,
             &[
                 safe_vk::name::instance::layer::khronos::VALIDATION,
                 safe_vk::name::instance::layer::lunarg::MONITOR,
@@ -73,16 +73,16 @@ fn test_all() {
             ],
         ));
         let surface = Arc::new(Surface::new(instance.clone(), &window));
-        let pdevice = Arc::new(PhysicalDevice::new(instance.clone(), Some(surface)));
+        let pdevice = Arc::new(PhysicalDevice::new(instance, Some(surface)));
         let device = Arc::new(Device::new(
-            pdevice.clone(),
+            pdevice,
             &vk::PhysicalDeviceFeatures::default(),
             &[ash::extensions::khr::Swapchain::name().to_str().unwrap()],
         ));
         println!("swapchain images created");
 
         let allocator = Arc::new(Allocator::new(device.clone()));
-        let descriptor_pool = DescriptorPool::new(
+        let _descriptor_pool = DescriptorPool::new(
             device.clone(),
             &[vk::DescriptorPoolSize::builder()
                 .descriptor_count(1)
@@ -91,14 +91,14 @@ fn test_all() {
             1,
         );
 
-        let mut buffer = Arc::new(Buffer::new(
+        let buffer = Arc::new(Buffer::new(
             None,
             allocator.clone(),
             100,
             vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         ));
-        let mut buffer_dst = Arc::new(Buffer::new(
+        let buffer_dst = Arc::new(Buffer::new(
             None,
             allocator.clone(),
             100,
@@ -114,7 +114,7 @@ fn test_all() {
 
         let swapchain = Arc::new(Swapchain::new(device.clone()));
 
-        let image = Image::new(
+        let _image = Image::new(
             allocator.clone(),
             vk::Format::B8G8R8A8_UNORM,
             123,
@@ -123,7 +123,7 @@ fn test_all() {
             vk_mem::MemoryUsage::GpuOnly,
         );
 
-        let images = Image::from_swapchain(swapchain.clone());
+        let _images = Image::from_swapchain(swapchain);
 
         println!("swapchain images created");
         let mut command_buffer = CommandBuffer::new(command_pool.clone());
@@ -155,7 +155,7 @@ fn test_all() {
             );
         });
 
-        let semaphore = TimelineSemaphore::new(device.clone());
+        let semaphore = TimelineSemaphore::new(device);
         queue.submit_timeline(
             command_buffer,
             &[&semaphore],
@@ -183,19 +183,19 @@ fn test_all() {
             vk::BufferUsageFlags::STORAGE_BUFFER,
             vk_mem::MemoryUsage::GpuOnly,
             &mut queue,
-            command_pool.clone(),
+            command_pool,
             bytemuck::cast_slice(&matrix),
         );
         assert_eq!(buffer.size(), 12 * 4);
 
         let image = Arc::new(Image::new(
-            allocator.clone(),
+            allocator,
             vk::Format::B8G8R8A8_UNORM,
             800,
             600,
             vk::ImageUsageFlags::SAMPLED,
             MemoryUsage::GpuOnly,
         ));
-        let image_view = ImageView::new(image.clone());
+        let _image_view = ImageView::new(image);
     });
 }

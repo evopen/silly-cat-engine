@@ -1,15 +1,15 @@
 #![feature(negative_impls)]
 
-use ash::version::{DeviceV1_0, DeviceV1_1, DeviceV1_2, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0};
 
 use anyhow::Result;
-use ash::extensions;
+
 use vk::Handle;
 
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
-use std::ffi::{CStr, CString};
-use std::process::Command;
+use std::ffi::{CString};
+
 use std::sync::{Arc, Mutex};
 
 pub use ash::vk;
@@ -513,7 +513,7 @@ impl Buffer {
         let data = data.as_ref();
         let mut buffer = Self::new(
             name,
-            allocator.clone(),
+            allocator,
             data.len(),
             buffer_usage
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
@@ -652,7 +652,7 @@ impl Queue {
         for (handle, (in_use, _)) in self.command_buffers.iter() {
             if let Ok(in_use_locked) = in_use.try_lock() {
                 if !*in_use_locked {
-                    removal_list.push(handle.clone());
+                    removal_list.push(*handle);
                 }
             }
         }
@@ -695,7 +695,7 @@ impl Queue {
                 .unwrap();
         }
         let fence_cloned = fence.clone();
-        let task = tokio::task::spawn(async move {
+        let _task = tokio::task::spawn(async move {
             fence_cloned.wait();
             *in_use_signaler.lock().unwrap() = false;
         });
@@ -1501,13 +1501,13 @@ impl Image {
 
         let staging_buffer = Buffer::new_init_host(
             Some("staging buffer"),
-            allocator.clone(),
+            allocator,
             vk::BufferUsageFlags::TRANSFER_SRC,
             MemoryUsage::CpuToGpu,
             data,
         );
 
-        image.copy_from_buffer(&staging_buffer, queue, command_pool.clone());
+        image.copy_from_buffer(&staging_buffer, queue, command_pool);
 
         image
     }
@@ -1518,7 +1518,7 @@ impl Image {
         queue: &mut Queue,
         command_pool: Arc<CommandPool>,
     ) {
-        let mut command_buffer = CommandBuffer::new(command_pool.clone());
+        let mut command_buffer = CommandBuffer::new(command_pool);
 
         unsafe {
             command_buffer.encode(|recorder| {
@@ -1567,7 +1567,7 @@ impl Image {
         queue: &mut Queue,
         command_pool: Arc<CommandPool>,
     ) {
-        let mut command_buffer = CommandBuffer::new(command_pool.clone());
+        let mut command_buffer = CommandBuffer::new(command_pool);
         unsafe {
             command_buffer.encode(|recorder| {
                 recorder.set_image_layout_raw(self, layout);
@@ -2385,7 +2385,7 @@ impl AccelerationStructure {
                 .build();
 
             let build_range_infos = primitive_counts
-                .into_iter()
+                .iter()
                 .map(|count| {
                     vk::AccelerationStructureBuildRangeInfoKHR::builder()
                         .first_vertex(0)
@@ -2411,7 +2411,7 @@ impl AccelerationStructure {
                 device,
             };
 
-            let mut command_buffer = CommandBuffer::new(command_pool.clone());
+            let mut command_buffer = CommandBuffer::new(command_pool);
             command_buffer.encode(|recorder| {
                 recorder.build_acceleration_structure_raw(
                     build_geometry_info,

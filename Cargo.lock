@@ -727,6 +727,7 @@ dependencies = [
 name = "gltf-wrapper"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "glam",
  "gltf",
  "safe-vk",

@@ -1,7 +1,9 @@
+use std::convert::TryInto;
 use std::path::Path;
 use std::sync::Arc;
 use std::unimplemented;
 
+use bytemuck::cast_slice;
 use glam::u32;
 use safe_vk::vk;
 
@@ -10,6 +12,12 @@ pub struct Scene {
     buffers: Vec<safe_vk::Buffer>,
     images: Vec<safe_vk::Image>,
     bottom_level_acceleration_structures: Vec<safe_vk::AccelerationStructure>,
+    top_level_acceleration_structure: safe_vk::AccelerationStructure,
+    instance_buffers: Vec<safe_vk::Buffer>,
+    allocator: Arc<safe_vk::Allocator>,
+    queue: safe_vk::Queue,
+    command_pool: Arc<safe_vk::CommandPool>,
+    pointer_buffer: safe_vk::Buffer,
 }
 
 impl Scene {
@@ -61,10 +69,8 @@ impl Scene {
             .collect::<Vec<_>>();
 
         assert_eq!(doc.scenes().len(), 1);
+
         let scene = doc.scenes().next().unwrap();
-        for node in scene.nodes() {
-            let _transform = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
-        }
 
         let bottom_level_acceleration_structures = doc
             .meshes()
@@ -160,12 +166,127 @@ impl Scene {
             })
             .collect::<Vec<_>>();
 
+        let instance_buffers: Vec<safe_vk::Buffer> = scene
+            .nodes()
+            .map(|node| {
+                Self::process_node(
+                    node,
+                    bottom_level_acceleration_structures.as_slice(),
+                    allocator.clone(),
+                    &mut queue,
+                    command_pool.clone(),
+                )
+            })
+            .flatten()
+            .collect();
+
+        let instance_buffer_addresses = instance_buffers
+            .iter()
+            .map(|buffer| buffer.device_address())
+            .collect::<Vec<_>>();
+
+        let pointer_buffer = safe_vk::Buffer::new_init_device(
+            Some("pointer buffer"),
+            allocator.clone(),
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            safe_vk::MemoryUsage::GpuOnly,
+            &mut queue,
+            command_pool.clone(),
+            bytemuck::cast_slice(&instance_buffer_addresses),
+        );
+
+        let instance_geometry = vk::AccelerationStructureGeometryKHR::builder()
+            .geometry_type(vk::GeometryTypeKHR::INSTANCES)
+            .flags(vk::GeometryFlagsKHR::OPAQUE)
+            .geometry(vk::AccelerationStructureGeometryDataKHR {
+                instances: vk::AccelerationStructureGeometryInstancesDataKHR::builder()
+                    .array_of_pointers(true)
+                    .data(vk::DeviceOrHostAddressConstKHR {
+                        device_address: pointer_buffer.device_address(),
+                    })
+                    .build(),
+            })
+            .build();
+
+        let top_level_acceleration_structure = safe_vk::AccelerationStructure::new(
+            Some("top level - mesh"),
+            allocator.clone(),
+            &[instance_geometry],
+            &[1],
+            vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+        );
+
         Self {
             doc,
             buffers,
             images,
             bottom_level_acceleration_structures,
+            instance_buffers,
+            allocator,
+            queue,
+            command_pool,
+            top_level_acceleration_structure,
+            pointer_buffer,
         }
+    }
+
+    fn process_node(
+        node: gltf::Node,
+        bottoms: &[safe_vk::AccelerationStructure],
+        allocator: Arc<safe_vk::Allocator>,
+        queue: &mut safe_vk::Queue,
+        command_pool: Arc<safe_vk::CommandPool>,
+    ) -> Vec<safe_vk::Buffer> {
+        let transform = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
+
+        let mut arr = node
+            .children()
+            .map(|node| {
+                Self::process_node(
+                    node,
+                    bottoms,
+                    allocator.clone(),
+                    queue,
+                    command_pool.clone(),
+                )
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+
+        if let Some(mesh) = node.mesh() {
+            let instance = vk::AccelerationStructureInstanceKHR {
+                transform: vk::TransformMatrixKHR {
+                    matrix: transform.as_ref()[..12].try_into().unwrap(),
+                },
+                instance_custom_index_and_mask: 0 | (0xFF << 24),
+                instance_shader_binding_table_record_offset_and_flags: 0 | (0x01 << 24),
+                acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+                    device_handle: bottoms[mesh.index()].device_address(),
+                },
+            };
+
+            let data = unsafe {
+                std::slice::from_raw_parts(
+                    std::mem::transmute(&instance),
+                    std::mem::size_of::<vk::AccelerationStructureInstanceKHR>(),
+                )
+            };
+
+            let instance_buffer = safe_vk::Buffer::new_init_device(
+                Some("instance buffer"),
+                allocator.clone(),
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+                safe_vk::MemoryUsage::GpuOnly,
+                queue,
+                command_pool.clone(),
+                data,
+            );
+
+            arr.push(instance_buffer);
+        }
+        arr
     }
 }
 

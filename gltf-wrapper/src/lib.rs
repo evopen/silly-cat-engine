@@ -257,7 +257,7 @@ impl Scene {
         if let Some(mesh) = node.mesh() {
             let instance = vk::AccelerationStructureInstanceKHR {
                 transform: vk::TransformMatrixKHR {
-                    matrix: transform.as_ref()[..12].try_into().unwrap(),
+                    matrix: transform.transpose().as_ref()[..12].try_into().unwrap(),
                 },
                 instance_custom_index_and_mask: 0 | (0xFF << 24),
                 instance_shader_binding_table_record_offset_and_flags: 0 | (0x01 << 24),

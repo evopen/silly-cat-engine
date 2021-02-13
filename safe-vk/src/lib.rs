@@ -272,6 +272,7 @@ pub struct Device {
     pdevice: Arc<PhysicalDevice>,
     acceleration_structure_loader: ash::extensions::khr::AccelerationStructure,
     swapchain_loader: ash::extensions::khr::Swapchain,
+    ray_tracing_pipeline_loader: ash::extensions::khr::RayTracingPipeline,
 }
 
 impl Device {
@@ -329,11 +330,15 @@ impl Device {
             let swapchain_loader =
                 ash::extensions::khr::Swapchain::new(&pdevice.instance.handle, &handle);
 
+            let ray_tracing_pipeline_loader =
+                ash::extensions::khr::RayTracingPipeline::new(&pdevice.instance.handle, &handle);
+
             Self {
                 handle,
                 pdevice,
                 acceleration_structure_loader,
                 swapchain_loader,
+                ray_tracing_pipeline_loader,
             }
         }
     }
@@ -2056,6 +2061,105 @@ impl Drop for GraphicsPipeline {
 }
 
 impl Pipeline for GraphicsPipeline {
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.layout
+    }
+}
+
+pub struct RayTracingPipeline {
+    handle: vk::Pipeline,
+    layout: Arc<PipelineLayout>,
+    stages: Vec<Arc<ShaderStage>>,
+}
+
+impl RayTracingPipeline {
+    pub fn new(
+        layout: Arc<PipelineLayout>,
+        stages: Vec<Arc<ShaderStage>>,
+        recursion_depth: u32,
+    ) -> Self {
+        let device = &layout.device;
+        let stage_create_infos = stages
+            .iter()
+            .map(|s| s.shader_stage_create_info())
+            .collect::<Vec<_>>();
+        let group_create_infos = stage_create_infos
+            .iter()
+            .enumerate()
+            .map(|(i, info)| {
+                match info.stage {
+                    vk::ShaderStageFlags::RAYGEN_KHR => {
+                        vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                            .closest_hit_shader(vk::SHADER_UNUSED_KHR)
+                            .general_shader(i as u32)
+                            .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                            .intersection_shader(vk::SHADER_UNUSED_KHR)
+                            .build()
+                    }
+                    vk::ShaderStageFlags::CLOSEST_HIT_KHR => {
+                        vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
+                            .closest_hit_shader(i as u32)
+                            .general_shader(vk::SHADER_UNUSED_KHR)
+                            .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                            .intersection_shader(vk::SHADER_UNUSED_KHR)
+                            .build()
+                    }
+                    vk::ShaderStageFlags::MISS_KHR => {
+                        vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                            .closest_hit_shader(vk::SHADER_UNUSED_KHR)
+                            .general_shader(i as u32)
+                            .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                            .intersection_shader(vk::SHADER_UNUSED_KHR)
+                            .build()
+                    }
+                    _ => {
+                        unimplemented!()
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+        unsafe {
+            let handle = device
+                .ray_tracing_pipeline_loader
+                .create_ray_tracing_pipelines(
+                    vk::DeferredOperationKHR::null(),
+                    vk::PipelineCache::null(),
+                    &[vk::RayTracingPipelineCreateInfoKHR::builder()
+                        .layout(layout.handle)
+                        .stages(stage_create_infos.as_slice())
+                        .groups(group_create_infos.as_slice())
+                        .max_pipeline_ray_recursion_depth(recursion_depth)
+                        .build()],
+                    None,
+                )
+                .unwrap()
+                .first()
+                .unwrap()
+                .to_owned();
+            Self {
+                handle,
+                layout,
+                stages,
+            }
+        }
+    }
+}
+
+impl Drop for RayTracingPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.layout
+                .device
+                .handle
+                .destroy_pipeline(self.handle, None);
+        }
+    }
+}
+
+impl Pipeline for RayTracingPipeline {
     fn layout(&self) -> &Arc<PipelineLayout> {
         &self.layout
     }

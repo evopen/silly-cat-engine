@@ -713,12 +713,16 @@ dependencies = [
 name = "gltf-viewer"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "egui",
  "egui-backend",
  "egui_winit_platform",
+ "glob",
  "gltf-wrapper",
  "nfd2",
+ "rust-embed",
  "safe-vk",
+ "shaderc",
  "tokio",
  "winit",
 ]

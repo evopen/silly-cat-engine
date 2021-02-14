@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use nfd2::open_file_dialog;
-use safe_vk::vk;
+use safe_vk::{vk, ShaderModule};
 
 pub struct Engine {
     ui_platform: egui_winit_platform::Platform,
@@ -60,6 +60,7 @@ impl Engine {
                 safe_vk::name::device::extension::khr::ACCELERATION_STRUCTURE,
                 safe_vk::name::device::extension::khr::DEFERRED_HOST_OPERATIONS,
                 safe_vk::name::device::extension::khr::BUFFER_DEVICE_ADDRESS,
+                safe_vk::name::device::extension::khr::RAY_TRACING_PIPELINE,
             ],
         ));
         let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));
@@ -73,7 +74,69 @@ impl Engine {
             .map(Arc::new)
             .collect::<Vec<_>>();
         let render_finish_semaphore = safe_vk::BinarySemaphore::new(device.clone());
-        let render_finish_fence = Arc::new(safe_vk::Fence::new(device, true));
+        let render_finish_fence = Arc::new(safe_vk::Fence::new(device.clone(), true));
+
+        let uniform_descriptor_set_layout = safe_vk::DescriptorSetLayout::new(
+            device.clone(),
+            Some("uniform descriptor set laytou"),
+            &[
+                vk::DescriptorSetLayoutBinding::builder()
+                    .binding(0)
+                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                    .descriptor_count(1)
+                    .build(),
+                vk::DescriptorSetLayoutBinding::builder()
+                    .binding(1)
+                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_count(1)
+                    .build(),
+            ],
+        );
+        let as_descriptor_set_layout = safe_vk::DescriptorSetLayout::new(
+            device.clone(),
+            Some("as descriptor set laytou"),
+            &[vk::DescriptorSetLayoutBinding::builder()
+                .binding(0)
+                .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+                .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                .descriptor_count(1)
+                .build()],
+        );
+        let ray_tracing_pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
+            device.clone(),
+            Some("rt pipeline layout"),
+            &[&uniform_descriptor_set_layout, &as_descriptor_set_layout],
+        ));
+        let stages = vec![
+            Arc::new(safe_vk::ShaderStage::new(
+                safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("ray_gen.rgen.spv").unwrap(),
+                ),
+                vk::ShaderStageFlags::RAYGEN_KHR,
+                "main",
+            )),
+            Arc::new(safe_vk::ShaderStage::new(
+                safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("closest_hit.rchit.spv").unwrap(),
+                ),
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                "main",
+            )),
+            Arc::new(safe_vk::ShaderStage::new(
+                safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("miss.rmiss.spv").unwrap(),
+                ),
+                vk::ShaderStageFlags::MISS_KHR,
+                "main",
+            )),
+        ];
+        let ray_tracing_pipeline =
+            safe_vk::RayTracingPipeline::new(ray_tracing_pipeline_layout.clone(), stages, 4);
 
         Self {
             ui_platform,

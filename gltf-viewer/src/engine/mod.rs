@@ -1,12 +1,12 @@
 mod shaders;
 
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use nfd2::open_file_dialog;
-use safe_vk::{vk, ShaderModule};
+
+use safe_vk::{vk};
 
 pub struct Engine {
     ui_platform: egui_winit_platform::Platform,

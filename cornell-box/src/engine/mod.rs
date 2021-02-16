@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use safe_vk::vk;
+use vk::CommandBuffer;
 
 pub struct Engine {
     ui_platform: egui_winit_platform::Platform,
@@ -54,7 +55,11 @@ impl Engine {
         let pdevice = Arc::new(safe_vk::PhysicalDevice::new(instance, Some(surface)));
         let device = Arc::new(safe_vk::Device::new(
             pdevice,
-            &vk::PhysicalDeviceFeatures::default(),
+            &vk::PhysicalDeviceFeatures {
+                fragment_stores_and_atomics: vk::TRUE,
+                vertex_pipeline_stores_and_atomics: vk::TRUE,
+                ..Default::default()
+            },
             &[
                 safe_vk::name::device::extension::khr::SWAPCHAIN,
                 safe_vk::name::device::extension::khr::ACCELERATION_STRUCTURE,
@@ -172,6 +177,18 @@ impl Engine {
             scene: None,
             pipeline,
         }
+    }
+
+    pub fn render_once(&mut self) {
+        let mut command_buffer = safe_vk::CommandBuffer::new(self.command_pool.clone());
+        command_buffer.encode(|rec| {
+            rec.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
+                rec.dispatch(1, 1, 1);
+            });
+        });
+        self.queue
+            .submit_binary(command_buffer, &[], &[], &[])
+            .wait();
     }
 
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {

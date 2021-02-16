@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::convert::TryInto;
 use std::path::Path;
 use std::sync::Arc;

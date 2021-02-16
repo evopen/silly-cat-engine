@@ -1,5 +1,3 @@
-use std::io::stdout;
-
 fn main() {
     // clean up old coverage data
     if let Ok(s) = std::fs::read_dir("target/coverage/regular/debug/deps") {

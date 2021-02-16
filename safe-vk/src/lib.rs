@@ -1,4 +1,5 @@
 #![feature(negative_impls)]
+#![allow(unused)]
 
 use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0};
 

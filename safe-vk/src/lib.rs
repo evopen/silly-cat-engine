@@ -950,6 +950,10 @@ pub trait GraphicsPipelineRecorder: PipelineRecorder {
     fn draw_indexed(&self, index_count: u32, instance_count: u32);
 }
 
+pub trait ComputePipelineRecorder: PipelineRecorder {
+    fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
+}
+
 pub trait PipelineRecorder {
     fn bind_descriptor_sets(
         &mut self,
@@ -986,6 +990,19 @@ impl<'a> PipelineRecorder for CommandRecorder<'a> {
         descriptor_sets
             .into_iter()
             .for_each(|set| self.command_buffer.resources.push(set));
+    }
+}
+
+impl<'a> ComputePipelineRecorder for CommandRecorder<'a> {
+    fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        unsafe {
+            self.device().handle.cmd_dispatch(
+                self.command_buffer.handle,
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            );
+        }
     }
 }
 
@@ -1129,6 +1146,22 @@ impl<'a> CommandRecorder<'a> {
         self.command_buffer.resources.push(pipeline);
     }
 
+    pub fn bind_compute_pipeline<I>(&mut self, pipeline: Arc<ComputePipeline>, f: I)
+    where
+        I: FnOnce(&mut dyn ComputePipelineRecorder, &dyn Pipeline),
+    {
+        unsafe {
+            self.device().handle.cmd_bind_pipeline(
+                self.command_buffer.handle,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline.handle,
+            );
+            self.bind_point = Some(vk::PipelineBindPoint::COMPUTE);
+            f(self, pipeline.as_ref());
+        }
+        self.command_buffer.resources.push(pipeline);
+    }
+
     fn device(&self) -> &Device {
         &self.command_buffer.pool.device
     }
@@ -1200,6 +1233,8 @@ impl Resource for ImageView {}
 impl Resource for RenderPass {}
 impl Resource for Framebuffer {}
 impl Resource for GraphicsPipeline {}
+impl Resource for ComputePipeline {}
+impl Resource for RayTracingPipeline {}
 impl Resource for DescriptorSet {}
 impl Resource for PipelineLayout {}
 impl Resource for AccelerationStructure {}

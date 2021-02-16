@@ -298,6 +298,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cornell-box"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "egui",
+ "egui-backend",
+ "egui_winit_platform",
+ "glob",
+ "gltf-wrapper",
+ "nfd2",
+ "rust-embed",
+ "safe-vk",
+ "shaderc",
+ "tokio",
+ "winit",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

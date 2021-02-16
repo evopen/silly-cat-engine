@@ -47,8 +47,8 @@ pub mod name {
                 pub const RAY_TRACING_PIPELINE: &str = "VK_KHR_ray_tracing_pipeline";
                 pub const ACCELERATION_STRUCTURE: &str = "VK_KHR_acceleration_structure";
                 pub const BUFFER_DEVICE_ADDRESS: &str = "VK_KHR_buffer_device_address";
+                pub const SHADER_NON_SEMANTIC_INFO: &str = "VK_KHR_shader_non_semantic_info";
             }
-            mod ext {}
         }
     }
 }
@@ -2062,6 +2062,73 @@ impl Drop for GraphicsPipeline {
 }
 
 impl Pipeline for GraphicsPipeline {
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.layout
+    }
+}
+
+pub struct ComputePipeline {
+    handle: vk::Pipeline,
+    layout: Arc<PipelineLayout>,
+    stage: Arc<ShaderStage>,
+}
+
+impl ComputePipeline {
+    pub fn new(name: Option<&str>, layout: Arc<PipelineLayout>, stage: Arc<ShaderStage>) -> Self {
+        unsafe {
+            let device = layout.device.as_ref();
+            let handle = device
+                .handle
+                .create_compute_pipelines(
+                    vk::PipelineCache::null(),
+                    &[vk::ComputePipelineCreateInfo::builder()
+                        .layout(layout.handle)
+                        .stage(stage.shader_stage_create_info())
+                        .build()],
+                    None,
+                )
+                .unwrap()
+                .first()
+                .unwrap()
+                .to_owned();
+
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::PIPELINE)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
+
+            Self {
+                handle,
+                layout,
+                stage,
+            }
+        }
+    }
+}
+
+impl Drop for ComputePipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.layout
+                .device
+                .handle
+                .destroy_pipeline(self.handle, None);
+        }
+    }
+}
+
+impl Pipeline for ComputePipeline {
     fn layout(&self) -> &Arc<PipelineLayout> {
         &self.layout
     }

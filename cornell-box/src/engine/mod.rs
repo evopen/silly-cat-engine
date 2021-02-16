@@ -21,6 +21,7 @@ pub struct Engine {
     render_finish_fence: Arc<safe_vk::Fence>,
     allocator: Arc<safe_vk::Allocator>,
     scene: Option<gltf_wrapper::Scene>,
+    pipeline: Arc<safe_vk::ComputePipeline>,
 }
 
 impl Engine {
@@ -60,6 +61,7 @@ impl Engine {
                 safe_vk::name::device::extension::khr::DEFERRED_HOST_OPERATIONS,
                 safe_vk::name::device::extension::khr::BUFFER_DEVICE_ADDRESS,
                 safe_vk::name::device::extension::khr::RAY_TRACING_PIPELINE,
+                safe_vk::name::device::extension::khr::SHADER_NON_SEMANTIC_INFO,
             ],
         ));
         let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));
@@ -103,9 +105,9 @@ impl Engine {
                 .descriptor_count(1)
                 .build()],
         );
-        let ray_tracing_pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
+        let pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
             device.clone(),
-            Some("rt pipeline layout"),
+            Some("compute pipeline layout"),
             &[&uniform_descriptor_set_layout, &as_descriptor_set_layout],
         ));
         // let stages = vec![
@@ -142,6 +144,18 @@ impl Engine {
             shaders::Shaders::get("raytrace.comp.spv").unwrap(),
         );
 
+        let shader_stage = Arc::new(safe_vk::ShaderStage::new(
+            shader_module,
+            vk::ShaderStageFlags::COMPUTE,
+            "main",
+        ));
+
+        let pipeline = Arc::new(safe_vk::ComputePipeline::new(
+            Some("compute pipeline"),
+            pipeline_layout,
+            shader_stage,
+        ));
+
         Self {
             ui_platform,
             size,
@@ -156,6 +170,7 @@ impl Engine {
             render_finish_fence,
             allocator,
             scene: None,
+            pipeline,
         }
     }
 

@@ -5,7 +5,8 @@ members = [
     "xtask",
     "egui-backend",
     "gltf-wrapper",
-    "gltf-viewer"
+    "gltf-viewer",
+    "cornell-box"
 ]
 
 

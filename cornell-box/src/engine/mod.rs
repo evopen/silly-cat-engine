@@ -159,12 +159,15 @@ impl Engine {
         let mut quad = render_pass::quad::Quad::new(device.clone());
 
         let mut result_image = safe_vk::Image::new(
+            Some("result image"),
             allocator.clone(),
             vk::Format::R32G32B32_SFLOAT,
             WIDTH,
             HEIGHT,
             vk::ImageTiling::LINEAR,
-            vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+            vk::ImageUsageFlags::SAMPLED
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::TRANSFER_SRC,
             safe_vk::MemoryUsage::GpuOnly,
         );
 
@@ -311,8 +314,57 @@ impl Engine {
                     .build()],
             );
             recorder.set_image_layout(
+                self.result_image.clone(),
+                None,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            );
+            recorder.set_image_layout(
                 target_image.clone(),
                 Some(vk::ImageLayout::UNDEFINED),
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            );
+            recorder.blit_image(
+                self.result_image.clone(),
+                target_image.clone(),
+                &[vk::ImageBlit::builder()
+                    .src_subresource(
+                        vk::ImageSubresourceLayers::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .layer_count(1)
+                            .base_array_layer(0)
+                            .mip_level(0)
+                            .build(),
+                    )
+                    .src_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: self.result_image.width() as i32,
+                            y: self.result_image.height() as i32,
+                            z: 1,
+                        },
+                    ])
+                    .dst_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: target_image.width() as i32,
+                            y: target_image.height() as i32,
+                            z: 1,
+                        },
+                    ])
+                    .dst_subresource(
+                        vk::ImageSubresourceLayers::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .layer_count(1)
+                            .base_array_layer(0)
+                            .mip_level(0)
+                            .build(),
+                    )
+                    .build()],
+                vk::Filter::NEAREST,
+            );
+            recorder.set_image_layout(
+                target_image.clone(),
+                None,
                 vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             );
             self.ui_pass.execute(

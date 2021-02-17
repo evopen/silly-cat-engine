@@ -57,6 +57,7 @@ impl Scene {
                 };
 
                 safe_vk::Image::new_init_host(
+                    Some("gltf texture"),
                     allocator.clone(),
                     format,
                     image.width,

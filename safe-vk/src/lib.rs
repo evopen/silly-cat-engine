@@ -1228,6 +1228,28 @@ impl<'a> CommandRecorder<'a> {
         );
     }
 
+    pub fn blit_image(
+        &mut self,
+        src: Arc<Image>,
+        dst: Arc<Image>,
+        regions: &[vk::ImageBlit],
+        filter: vk::Filter,
+    ) {
+        unsafe {
+            self.device().handle.cmd_blit_image(
+                self.command_buffer.handle,
+                src.handle,
+                src.layout(),
+                dst.handle,
+                dst.layout(),
+                regions,
+                filter,
+            );
+        }
+        self.command_buffer.resources.push(src);
+        self.command_buffer.resources.push(dst);
+    }
+
     pub fn set_image_layout(
         &mut self,
         image: Arc<Image>,
@@ -1520,6 +1542,7 @@ pub struct Image {
 
 impl Image {
     pub fn new(
+        name: Option<&str>,
         allocator: Arc<Allocator>,
         format: vk::Format,
         width: u32,
@@ -1554,6 +1577,25 @@ impl Image {
             )
             .unwrap();
 
+        let device = allocator.device();
+        unsafe {
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::IMAGE)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
+        }
+
         let image_type = ImageType::Allocated {
             allocator,
             allocation,
@@ -1577,6 +1619,7 @@ impl Image {
     }
 
     pub fn new_init_host<I: AsRef<[u8]>>(
+        name: Option<&str>,
         allocator: Arc<Allocator>,
         format: vk::Format,
         width: u32,
@@ -1589,6 +1632,7 @@ impl Image {
         data: I,
     ) -> Self {
         let mut image = Self::new(
+            name,
             allocator.clone(),
             format,
             width,
@@ -1715,6 +1759,21 @@ impl Image {
                     }
                 })
                 .collect::<Vec<_>>();
+            results.iter().for_each(|image| {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(image.handle.as_raw())
+                            .object_type(vk::ObjectType::IMAGE)
+                            .object_name(CString::new("swapchain image").unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            });
 
             results
         }

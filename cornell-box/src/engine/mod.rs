@@ -30,7 +30,7 @@ pub struct Engine {
     render_finish_semaphore: safe_vk::BinarySemaphore,
     render_finish_fence: Arc<safe_vk::Fence>,
     allocator: Arc<safe_vk::Allocator>,
-    scene: Option<gltf_wrapper::Scene>,
+    scene: gltf_wrapper::Scene,
     pipeline: Arc<safe_vk::ComputePipeline>,
     descriptor_set: Arc<safe_vk::DescriptorSet>,
     storage_buffer: Arc<safe_vk::Buffer>,
@@ -54,7 +54,7 @@ impl Engine {
         let instance = Arc::new(safe_vk::Instance::new(
             entry,
             &[
-                safe_vk::name::instance::layer::khronos::VALIDATION,
+                // safe_vk::name::instance::layer::khronos::VALIDATION,
                 safe_vk::name::instance::layer::lunarg::MONITOR,
             ],
             &[
@@ -178,6 +178,11 @@ impl Engine {
         let result_image_view = Arc::new(safe_vk::ImageView::new(result_image.clone()));
         quad.update_texture(result_image_view.clone());
 
+        let scene = gltf_wrapper::Scene::from_file(
+            allocator.clone(),
+            "./cornell-box/models/CornellBox.glb",
+        );
+
         Self {
             ui_platform,
             size,
@@ -191,7 +196,7 @@ impl Engine {
             render_finish_semaphore,
             render_finish_fence,
             allocator,
-            scene: None,
+            scene,
             pipeline,
             descriptor_set,
             storage_buffer,
@@ -250,7 +255,7 @@ impl Engine {
                         {
                             nfd2::Response::Okay(p) => {
                                 self.scene =
-                                    Some(gltf_wrapper::Scene::from_file(self.allocator.clone(), p));
+                                    gltf_wrapper::Scene::from_file(self.allocator.clone(), p);
                             }
                             nfd2::Response::OkayMultiple(_) => {}
                             nfd2::Response::Cancel => {}

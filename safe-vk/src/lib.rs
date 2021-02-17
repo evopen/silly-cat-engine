@@ -318,6 +318,11 @@ impl Device {
                         .acceleration_structure(true)
                         .build(),
                 )
+                .push_next(
+                    &mut vk::PhysicalDeviceScalarBlockLayoutFeatures::builder()
+                        .scalar_block_layout(true)
+                        .build(),
+                )
                 .build();
             let handle = pdevice
                 .instance

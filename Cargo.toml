@@ -6,7 +6,8 @@ members = [
     "egui-backend",
     "gltf-wrapper",
     "gltf-viewer",
-    "cornell-box"
+    "cornell-box",
+    "shaders",
 ]
 
 

@@ -1,9 +1,32 @@
 #version 460
 #extension GL_EXT_debug_printf : require
+#extension GL_EXT_scalar_block_layout : require
 
 layout(local_size_x = 16, local_size_y = 8, local_size_z = 1) in;
 
+layout(binding = 0, set = 0, scalar) buffer storage_buffer
+{
+    vec3 image_data[];
+};
+
+const uint WIDTH = 800;
+const uint HEIGHT = 600;
+
 void main()
 {
-    debugPrintfEXT("Global %v3u, Local %v3u\n", gl_GlobalInvocationID, gl_LocalInvocationID);
+    const uvec2 pixel = gl_GlobalInvocationID.xy;
+    if ((pixel.x > WIDTH) || (pixel.y > HEIGHT)) {
+        return;
+    }
+
+    const vec3 pixel_color = vec3(float(pixel.x) / WIDTH, // Red
+        float(pixel.y) / HEIGHT, // Green
+        0.0);
+
+    // Get the index of this invocation in the buffer:
+    uint linearIndex = WIDTH * pixel.y + pixel.x;
+    // Write the color to the buffer.
+    image_data[linearIndex] = pixel_color;
+
+    debugPrintfEXT("Color %v3f\n", pixel_color);
 }

@@ -7,7 +7,8 @@ members = [
     "gltf-wrapper",
     "gltf-viewer",
     "cornell-box",
-    "shaders",
+    "shader",
+    "render-pass"
 ]
 
 

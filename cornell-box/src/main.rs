@@ -1,7 +1,10 @@
 mod engine;
+use std::time::Instant;
+
 use engine::Engine;
 
 fn main() {
+    env_logger::init();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::Window::new(&event_loop).unwrap();

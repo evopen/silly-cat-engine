@@ -1,12 +1,21 @@
 mod shaders;
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use safe_vk::vk;
+use bytemuck::cast_slice;
+use image::ImageBuffer;
+use safe_vk::{vk, PipelineRecorder};
 use vk::CommandBuffer;
+
+const WIDTH: u32 = 800;
+const HEIGHT: u32 = 600;
+
+const WORKGROUP_WIDTH: u32 = 16;
+const WORKGROUP_HEIGHT: u32 = 8;
 
 pub struct Engine {
     ui_platform: egui_winit_platform::Platform,
@@ -23,6 +32,8 @@ pub struct Engine {
     allocator: Arc<safe_vk::Allocator>,
     scene: Option<gltf_wrapper::Scene>,
     pipeline: Arc<safe_vk::ComputePipeline>,
+    descriptor_set: Arc<safe_vk::DescriptorSet>,
+    storage_buffer: Arc<safe_vk::Buffer>,
 }
 
 impl Engine {
@@ -82,67 +93,50 @@ impl Engine {
         let render_finish_semaphore = safe_vk::BinarySemaphore::new(device.clone());
         let render_finish_fence = Arc::new(safe_vk::Fence::new(device.clone(), true));
 
-        let uniform_descriptor_set_layout = safe_vk::DescriptorSetLayout::new(
+        let descriptor_set_layout = Arc::new(safe_vk::DescriptorSetLayout::new(
             device.clone(),
-            Some("uniform descriptor set laytou"),
-            &[
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(0)
-                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
-                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                    .descriptor_count(1)
-                    .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(1)
-                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .descriptor_count(1)
-                    .build(),
-            ],
-        );
-        let as_descriptor_set_layout = safe_vk::DescriptorSetLayout::new(
-            device.clone(),
-            Some("as descriptor set laytou"),
+            Some("descriptor set layout"),
             &[vk::DescriptorSetLayoutBinding::builder()
                 .binding(0)
-                .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
-                .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(1)
                 .build()],
-        );
+        ));
+
         let pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
             device.clone(),
             Some("compute pipeline layout"),
-            &[&uniform_descriptor_set_layout, &as_descriptor_set_layout],
+            &[&descriptor_set_layout],
         ));
-        // let stages = vec![
-        //     Arc::new(safe_vk::ShaderStage::new(
-        //         safe_vk::ShaderModule::new(
-        //             device.clone(),
-        //             shaders::Shaders::get("ray_gen.rgen.spv").unwrap(),
-        //         ),
-        //         vk::ShaderStageFlags::RAYGEN_KHR,
-        //         "main",
-        //     )),
-        //     Arc::new(safe_vk::ShaderStage::new(
-        //         safe_vk::ShaderModule::new(
-        //             device.clone(),
-        //             shaders::Shaders::get("closest_hit.rchit.spv").unwrap(),
-        //         ),
-        //         vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-        //         "main",
-        //     )),
-        //     Arc::new(safe_vk::ShaderStage::new(
-        //         safe_vk::ShaderModule::new(
-        //             device.clone(),
-        //             shaders::Shaders::get("miss.rmiss.spv").unwrap(),
-        //         ),
-        //         vk::ShaderStageFlags::MISS_KHR,
-        //         "main",
-        //     )),
-        // ];
-        // let ray_tracing_pipeline =
-        //     safe_vk::RayTracingPipeline::new(ray_tracing_pipeline_layout.clone(), stages, 4);
+
+        let mut descriptor_set = safe_vk::DescriptorSet::new(
+            Some("Main descriptor set"),
+            Arc::new(safe_vk::DescriptorPool::new(
+                device.clone(),
+                &[vk::DescriptorPoolSize::builder()
+                    .ty(vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(1)
+                    .build()],
+                1,
+            )),
+            descriptor_set_layout.clone(),
+        );
+
+        let storage_buffer = Arc::new(safe_vk::Buffer::new(
+            Some("storage buffer"),
+            allocator.clone(),
+            (std::mem::size_of::<f32>() * 3) as u32 * WIDTH * HEIGHT,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+            safe_vk::MemoryUsage::CpuToGpu,
+        ));
+
+        descriptor_set.update(&[safe_vk::DescriptorSetUpdateInfo {
+            binding: 0,
+            detail: safe_vk::DescriptorSetUpdateDetail::Buffer(storage_buffer.clone()),
+        }]);
+
+        let descriptor_set = Arc::new(descriptor_set);
 
         let shader_module = safe_vk::ShaderModule::new(
             device.clone(),
@@ -176,6 +170,8 @@ impl Engine {
             allocator,
             scene: None,
             pipeline,
+            descriptor_set,
+            storage_buffer,
         }
     }
 
@@ -183,87 +179,104 @@ impl Engine {
         let mut command_buffer = safe_vk::CommandBuffer::new(self.command_pool.clone());
         command_buffer.encode(|rec| {
             rec.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
-                rec.dispatch(1, 1, 1);
+                rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
+
+                rec.dispatch(
+                    (WIDTH as f32 / WORKGROUP_WIDTH as f32).ceil() as u32,
+                    (HEIGHT as f32 / WORKGROUP_HEIGHT as f32).ceil() as u32,
+                    1,
+                );
             });
         });
         self.queue
             .submit_binary(command_buffer, &[], &[], &[])
             .wait();
+        let mapped = self.storage_buffer.map();
+        let mapped = unsafe { std::mem::transmute(mapped) };
+        let data: &[image::Rgb<f32>] =
+            unsafe { std::slice::from_raw_parts(mapped, (WIDTH * HEIGHT) as usize) };
+        let f = std::fs::File::create("./hello.hdr").unwrap();
+        let encoder = image::hdr::HdrEncoder::new(f);
+
+        encoder
+            .encode(data, WIDTH as usize, HEIGHT as usize)
+            .unwrap();
+        self.storage_buffer.unmap();
     }
 
-    pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
-        self.ui_platform.handle_event(event);
-    }
+    // pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
+    //     self.ui_platform.handle_event(event);
+    // }
 
-    pub fn update(&mut self) {
-        let current_dir = PathBuf::from_str(std::env::current_dir().unwrap().to_str().unwrap())
-            .unwrap()
-            .join("models\\2.0\\Box\\glTF");
-        self.ui_platform
-            .update_time(self.time.elapsed().as_secs_f64());
-        self.ui_platform.begin_frame();
+    // pub fn update(&mut self) {
+    //     let current_dir = PathBuf::from_str(std::env::current_dir().unwrap().to_str().unwrap())
+    //         .unwrap()
+    //         .join("models\\2.0\\Box\\glTF");
+    //     self.ui_platform
+    //         .update_time(self.time.elapsed().as_secs_f64());
+    //     self.ui_platform.begin_frame();
 
-        egui::TopPanel::top(egui::Id::new("menu bar")).show(&self.ui_platform.context(), |ui| {
-            egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
-                    if ui.button("Open").clicked {
-                        match nfd2::open_file_dialog(Some("gltf,glb"), Some(current_dir.as_ref()))
-                            .unwrap()
-                        {
-                            nfd2::Response::Okay(p) => {
-                                self.scene =
-                                    Some(gltf_wrapper::Scene::from_file(self.allocator.clone(), p));
-                            }
-                            nfd2::Response::OkayMultiple(_) => {}
-                            nfd2::Response::Cancel => {}
-                        }
-                    }
-                });
-            });
-        });
+    //     egui::TopPanel::top(egui::Id::new("menu bar")).show(&self.ui_platform.context(), |ui| {
+    //         egui::menu::bar(ui, |ui| {
+    //             egui::menu::menu(ui, "File", |ui| {
+    //                 if ui.button("Open").clicked {
+    //                     match nfd2::open_file_dialog(Some("gltf,glb"), Some(current_dir.as_ref()))
+    //                         .unwrap()
+    //                     {
+    //                         nfd2::Response::Okay(p) => {
+    //                             self.scene =
+    //                                 Some(gltf_wrapper::Scene::from_file(self.allocator.clone(), p));
+    //                         }
+    //                         nfd2::Response::OkayMultiple(_) => {}
+    //                         nfd2::Response::Cancel => {}
+    //                     }
+    //                 }
+    //             });
+    //         });
+    //     });
 
-        let (_, shapes) = self.ui_platform.end_frame();
-        let paint_jobs = self.ui_platform.context().tessellate(shapes);
-        self.ui_pass.update_buffers(
-            &paint_jobs,
-            &egui_backend::ScreenDescriptor {
-                physical_width: self.size.width,
-                physical_height: self.size.height,
-                scale_factor: self.scale_factor as f32,
-            },
-        );
-        self.ui_pass
-            .update_texture(&self.ui_platform.context().texture());
-    }
+    //     let (_, shapes) = self.ui_platform.end_frame();
+    //     let paint_jobs = self.ui_platform.context().tessellate(shapes);
+    //     self.ui_pass.update_buffers(
+    //         &paint_jobs,
+    //         &egui_backend::ScreenDescriptor {
+    //             physical_width: self.size.width,
+    //             physical_height: self.size.height,
+    //             scale_factor: self.scale_factor as f32,
+    //         },
+    //     );
+    //     self.ui_pass
+    //         .update_texture(&self.ui_platform.context().texture());
+    // }
 
-    pub fn render(&mut self) {
-        let (index, _) = self.swapchain.acquire_next_image();
-        let mut command_buffer = safe_vk::CommandBuffer::new(self.command_pool.clone());
+    // pub fn render(&mut self) {
+    //     let (index, _) = self.swapchain.acquire_next_image();
+    //     let mut command_buffer = safe_vk::CommandBuffer::new(self.command_pool.clone());
 
-        let target_image = self.swapchain_images[index as usize].clone();
-        command_buffer.encode(|recorder| {
-            recorder.set_image_layout(
-                target_image.clone(),
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            );
-            self.ui_pass.execute(
-                recorder,
-                target_image,
-                &egui_backend::ScreenDescriptor {
-                    physical_width: self.size.width,
-                    physical_height: self.size.height,
-                    scale_factor: self.scale_factor as f32,
-                },
-            );
-        });
-        self.render_finish_fence.wait();
-        self.render_finish_fence = self.queue.submit_binary(
-            command_buffer,
-            &[&self.swapchain.image_available_semaphore()],
-            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
-            &[&self.render_finish_semaphore],
-        );
-        self.queue
-            .present(&self.swapchain, index, &[&self.render_finish_semaphore])
-    }
+    //     let target_image = self.swapchain_images[index as usize].clone();
+    //     command_buffer.encode(|recorder| {
+    //         recorder.set_image_layout(
+    //             target_image.clone(),
+    //             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+    //         );
+    //         self.ui_pass.execute(
+    //             recorder,
+    //             target_image,
+    //             &egui_backend::ScreenDescriptor {
+    //                 physical_width: self.size.width,
+    //                 physical_height: self.size.height,
+    //                 scale_factor: self.scale_factor as f32,
+    //             },
+    //         );
+    //     });
+    //     self.render_finish_fence.wait();
+    //     self.render_finish_fence = self.queue.submit_binary(
+    //         command_buffer,
+    //         &[&self.swapchain.image_available_semaphore()],
+    //         &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+    //         &[&self.render_finish_semaphore],
+    //     );
+    //     self.queue
+    //         .present(&self.swapchain, index, &[&self.render_finish_semaphore])
+    // }
 }

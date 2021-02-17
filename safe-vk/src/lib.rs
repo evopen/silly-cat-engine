@@ -1933,20 +1933,62 @@ impl Drop for RenderPass {
     }
 }
 
+pub enum DescriptorType {
+    Sampler(Option<Arc<Sampler>>),
+    SampledImage,
+}
+
+pub struct DescriptorSetLayoutBinding {
+    pub binding: u32,
+    pub descriptor_type: DescriptorType,
+    pub stage_flags: vk::ShaderStageFlags,
+}
+
 pub struct DescriptorSetLayout {
     handle: vk::DescriptorSetLayout,
     device: Arc<Device>,
-    bindings: Vec<vk::DescriptorSetLayoutBinding>,
+    bindings: Vec<DescriptorSetLayoutBinding>,
+    vk_bindings: Vec<vk::DescriptorSetLayoutBinding>,
 }
 
 impl DescriptorSetLayout {
     pub fn new(
         device: Arc<Device>,
         name: Option<&str>,
-        bindings: &[vk::DescriptorSetLayoutBinding],
+        bindings: Vec<DescriptorSetLayoutBinding>,
     ) -> Self {
+        let vk_bindings = bindings
+            .iter()
+            .map(|binding| {
+                match &binding.descriptor_type {
+                    DescriptorType::Sampler(immutable_sampler) => {
+                        if let Some(sampler) = immutable_sampler {
+                            vk::DescriptorSetLayoutBinding::builder()
+                                .binding(binding.binding)
+                                .descriptor_type(vk::DescriptorType::SAMPLER)
+                                .descriptor_count(1)
+                                .immutable_samplers(&[sampler.handle])
+                                .build()
+                        } else {
+                            vk::DescriptorSetLayoutBinding::builder()
+                                .binding(binding.binding)
+                                .descriptor_type(vk::DescriptorType::SAMPLER)
+                                .descriptor_count(1)
+                                .build()
+                        }
+                    }
+                    DescriptorType::SampledImage => {
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(binding.binding)
+                            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                            .descriptor_count(1)
+                            .build()
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
         let info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(bindings)
+            .bindings(vk_bindings.as_slice())
             .build();
         unsafe {
             let handle = device
@@ -1972,7 +2014,8 @@ impl DescriptorSetLayout {
             Self {
                 handle,
                 device,
-                bindings: bindings.to_vec(),
+                bindings,
+                vk_bindings,
             }
         }
     }
@@ -2384,7 +2427,7 @@ impl DescriptorSet {
 
     pub fn update(&mut self, update_infos: &[DescriptorSetUpdateInfo]) {
         let device = self.descriptor_pool.device.clone();
-        let bindings = self.descriptor_set_layout.bindings.clone();
+        let bindings = self.descriptor_set_layout.vk_bindings.clone();
 
         let descriptor_writes = update_infos
             .iter()

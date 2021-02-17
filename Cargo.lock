@@ -338,6 +338,7 @@ dependencies = [
  "image",
  "log",
  "nfd2",
+ "render-pass",
  "rust-embed",
  "safe-vk",
  "shaderc",

@@ -1505,6 +1505,7 @@ impl Image {
         format: vk::Format,
         width: u32,
         height: u32,
+        tiling: vk::ImageTiling,
         image_usage: vk::ImageUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
     ) -> Self {
@@ -1522,7 +1523,7 @@ impl Image {
                     .samples(vk::SampleCountFlags::TYPE_1)
                     .mip_levels(1)
                     .array_layers(1)
-                    .tiling(vk::ImageTiling::OPTIMAL)
+                    .tiling(tiling)
                     .usage(image_usage)
                     .sharing_mode(vk::SharingMode::EXCLUSIVE)
                     .initial_layout(vk::ImageLayout::UNDEFINED)
@@ -1555,6 +1556,7 @@ impl Image {
         format: vk::Format,
         width: u32,
         height: u32,
+        tiling: vk::ImageTiling,
         image_usage: vk::ImageUsageFlags,
         memory_usage: vk_mem::MemoryUsage,
         queue: &mut Queue,
@@ -1566,6 +1568,7 @@ impl Image {
             format,
             width,
             height,
+            tiling,
             image_usage,
             memory_usage,
         );

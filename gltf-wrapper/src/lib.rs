@@ -61,6 +61,7 @@ impl Scene {
                     format,
                     image.width,
                     image.height,
+                    vk::ImageTiling::OPTIMAL,
                     vk::ImageUsageFlags::SAMPLED,
                     safe_vk::MemoryUsage::CpuToGpu,
                     &mut queue,

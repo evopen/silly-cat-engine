@@ -965,6 +965,7 @@ pub trait GraphicsPipelineRecorder: PipelineRecorder {
     fn set_viewport(&self, viewport: vk::Viewport);
     fn bind_vertex_buffer(&mut self, buffers: Vec<Arc<Buffer>>, offsets: &[u64]);
     fn draw_indexed(&self, index_count: u32, instance_count: u32);
+    fn draw(&self, vertex_count: u32, instance_count: u32);
 }
 
 pub trait ComputePipelineRecorder: PipelineRecorder {
@@ -1081,6 +1082,18 @@ impl<'a> GraphicsPipelineRecorder for CommandRecorder<'a> {
             self.device()
                 .handle
                 .cmd_set_viewport(self.command_buffer.handle, 0, &[viewport]);
+        }
+    }
+
+    fn draw(&self, vertex_count: u32, instance_count: u32) {
+        unsafe {
+            self.device().handle.cmd_draw(
+                self.command_buffer.handle,
+                vertex_count,
+                instance_count,
+                0,
+                0,
+            );
         }
     }
 }

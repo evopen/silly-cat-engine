@@ -80,6 +80,7 @@ fn main() -> Result<()> {
         shaderc::EnvVersion::Vulkan1_2 as u32,
     );
     options.set_target_spirv(shaderc::SpirvVersion::V1_5);
+    options.set_generate_debug_info();
 
     // This can't be parallelized. The [shaderc::Compiler] is not
     // thread safe. Also, it creates a lot of resources. You could

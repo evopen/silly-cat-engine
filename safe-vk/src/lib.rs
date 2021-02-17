@@ -1937,11 +1937,15 @@ impl Drop for RenderPass {
     }
 }
 
+#[derive(Clone)]
 pub enum DescriptorType {
     Sampler(Option<Arc<Sampler>>),
     SampledImage,
+    UniformBuffer,
+    StorageBuffer,
 }
 
+#[derive(Clone)]
 pub struct DescriptorSetLayoutBinding {
     pub binding: u32,
     pub descriptor_type: DescriptorType,
@@ -1959,7 +1963,7 @@ impl DescriptorSetLayout {
     pub fn new(
         device: Arc<Device>,
         name: Option<&str>,
-        bindings: Vec<DescriptorSetLayoutBinding>,
+        bindings: &[DescriptorSetLayoutBinding],
     ) -> Self {
         let vk_bindings = bindings
             .iter()
@@ -1972,12 +1976,14 @@ impl DescriptorSetLayout {
                                 .descriptor_type(vk::DescriptorType::SAMPLER)
                                 .descriptor_count(1)
                                 .immutable_samplers(&[sampler.handle])
+                                .stage_flags(binding.stage_flags)
                                 .build()
                         } else {
                             vk::DescriptorSetLayoutBinding::builder()
                                 .binding(binding.binding)
                                 .descriptor_type(vk::DescriptorType::SAMPLER)
                                 .descriptor_count(1)
+                                .stage_flags(binding.stage_flags)
                                 .build()
                         }
                     }
@@ -1986,6 +1992,23 @@ impl DescriptorSetLayout {
                             .binding(binding.binding)
                             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                             .descriptor_count(1)
+                            .stage_flags(binding.stage_flags)
+                            .build()
+                    }
+                    DescriptorType::UniformBuffer => {
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(binding.binding)
+                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                            .descriptor_count(1)
+                            .stage_flags(binding.stage_flags)
+                            .build()
+                    }
+                    DescriptorType::StorageBuffer => {
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(binding.binding)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .descriptor_count(1)
+                            .stage_flags(binding.stage_flags)
                             .build()
                     }
                 }
@@ -2018,7 +2041,7 @@ impl DescriptorSetLayout {
             Self {
                 handle,
                 device,
-                bindings,
+                bindings: bindings.to_owned(),
                 vk_bindings,
             }
         }

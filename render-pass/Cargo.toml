@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 safe-vk = { path = "../safe-vk" }
+shader = { path = "../shader" }

@@ -1482,6 +1482,7 @@ name = "render-pass"
 version = "0.1.0"
 dependencies = [
  "safe-vk",
+ "shader",
 ]
 
 [[package]]

@@ -1775,6 +1775,10 @@ impl ImageView {
             Self { image, handle }
         }
     }
+
+    pub fn image(&self) -> &Image {
+        self.image.as_ref()
+    }
 }
 
 impl Drop for ImageView {

@@ -277,38 +277,39 @@ impl Engine {
 
         let target_image = self.swapchain_images[index as usize].clone();
         command_buffer.encode(|recorder| {
-            // recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
-            //     rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
+            recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
+                rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
 
-            //     rec.dispatch(
-            //         (WIDTH as f32 / WORKGROUP_WIDTH as f32).ceil() as u32,
-            //         (HEIGHT as f32 / WORKGROUP_HEIGHT as f32).ceil() as u32,
-            //         1,
-            //     );
-            // });
-            // recorder.set_image_layout(
-            //     self.result_image.clone(),
-            //     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            // );
-            // recorder.copy_buffer_to_image(
-            //     self.storage_buffer.clone(),
-            //     self.result_image.clone(),
-            //     &[vk::BufferImageCopy::builder()
-            //         .image_extent(vk::Extent3D {
-            //             width: self.result_image.width(),
-            //             height: self.result_image.height(),
-            //             depth: 1,
-            //         })
-            //         .image_subresource(
-            //             vk::ImageSubresourceLayers::builder()
-            //                 .aspect_mask(vk::ImageAspectFlags::COLOR)
-            //                 .layer_count(1)
-            //                 .base_array_layer(0)
-            //                 .mip_level(0)
-            //                 .build(),
-            //         )
-            //         .build()],
-            // );
+                rec.dispatch(
+                    (WIDTH as f32 / WORKGROUP_WIDTH as f32).ceil() as u32,
+                    (HEIGHT as f32 / WORKGROUP_HEIGHT as f32).ceil() as u32,
+                    1,
+                );
+            });
+            recorder.set_image_layout(
+                self.result_image.clone(),
+                Some(vk::ImageLayout::UNDEFINED),
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            );
+            recorder.copy_buffer_to_image(
+                self.storage_buffer.clone(),
+                self.result_image.clone(),
+                &[vk::BufferImageCopy::builder()
+                    .image_extent(vk::Extent3D {
+                        width: self.result_image.width(),
+                        height: self.result_image.height(),
+                        depth: 1,
+                    })
+                    .image_subresource(
+                        vk::ImageSubresourceLayers::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .layer_count(1)
+                            .base_array_layer(0)
+                            .mip_level(0)
+                            .build(),
+                    )
+                    .build()],
+            );
             recorder.set_image_layout(
                 target_image.clone(),
                 Some(vk::ImageLayout::UNDEFINED),

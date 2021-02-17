@@ -1228,13 +1228,32 @@ impl<'a> CommandRecorder<'a> {
         );
     }
 
-    pub fn set_image_layout(&mut self, image: Arc<Image>, new_layout: vk::ImageLayout) {
-        cmd_set_image_layout(image.layout, &self.command_buffer, image.handle, new_layout);
+    pub fn set_image_layout(
+        &mut self,
+        image: Arc<Image>,
+        old_layout: Option<vk::ImageLayout>,
+        new_layout: vk::ImageLayout,
+    ) {
+        let old = match old_layout {
+            Some(l) => l,
+            None => {
+                vk::ImageLayout::from_raw(image.layout.load(std::sync::atomic::Ordering::SeqCst))
+            }
+        };
+        cmd_set_image_layout(old, &self.command_buffer, image.handle, new_layout);
+        image
+            .layout
+            .store(new_layout.as_raw(), std::sync::atomic::Ordering::SeqCst);
         self.command_buffer.resources.push(image);
     }
 
     unsafe fn set_image_layout_raw(&mut self, image: &Image, new_layout: vk::ImageLayout) {
-        cmd_set_image_layout(image.layout, &self.command_buffer, image.handle, new_layout);
+        cmd_set_image_layout(
+            vk::ImageLayout::from_raw(image.layout.load(std::sync::atomic::Ordering::SeqCst)),
+            &self.command_buffer,
+            image.handle,
+            new_layout,
+        );
     }
 
     fn build_acceleration_structure_raw(
@@ -1495,7 +1514,7 @@ pub struct Image {
     image_type: ImageType,
     width: u32,
     height: u32,
-    layout: vk::ImageLayout,
+    layout: std::sync::atomic::AtomicI32,
     format: vk::Format,
 }
 
@@ -1541,14 +1560,20 @@ impl Image {
             allocation_info,
         };
 
+        let layout = std::sync::atomic::AtomicI32::new(vk::ImageLayout::UNDEFINED.as_raw());
+
         Self {
             handle,
             width,
             height,
-            layout: vk::ImageLayout::UNDEFINED,
+            layout,
             image_type,
             format,
         }
+    }
+
+    pub fn layout(&self) -> vk::ImageLayout {
+        vk::ImageLayout::from_raw(self.layout.load(std::sync::atomic::Ordering::SeqCst))
     }
 
     pub fn new_init_host<I: AsRef<[u8]>>(
@@ -1588,7 +1613,7 @@ impl Image {
     }
 
     pub fn copy_from_buffer(
-        &mut self,
+        &self,
         buffer: &Buffer,
         queue: &mut Queue,
         command_pool: Arc<CommandPool>,
@@ -1623,7 +1648,10 @@ impl Image {
                 );
             });
         }
-        self.layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+        self.layout.store(
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL.as_raw(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
 
         let semaphore = TimelineSemaphore::new(self.device().clone());
         queue.submit_timeline(
@@ -1648,7 +1676,8 @@ impl Image {
                 recorder.set_image_layout_raw(self, layout);
             });
         }
-        self.layout = layout;
+        self.layout
+            .store(layout.as_raw(), std::sync::atomic::Ordering::SeqCst);
 
         let semaphore = TimelineSemaphore::new(self.device().clone());
         queue.submit_timeline(
@@ -1679,7 +1708,9 @@ impl Image {
                         },
                         width: swapchain.extent.width,
                         height: swapchain.extent.height,
-                        layout: vk::ImageLayout::UNDEFINED,
+                        layout: std::sync::atomic::AtomicI32::new(
+                            vk::ImageLayout::UNDEFINED.as_raw(),
+                        ),
                         format: swapchain.format,
                     }
                 })
@@ -1704,11 +1735,14 @@ impl Image {
         need_old_data: bool,
     ) {
         let old_layout = match need_old_data {
-            true => self.layout,
+            true => {
+                vk::ImageLayout::from_raw(self.layout.load(std::sync::atomic::Ordering::SeqCst))
+            }
             false => vk::ImageLayout::UNDEFINED,
         };
         cmd_set_image_layout(old_layout, command_buffer, self.handle, layout);
-        self.layout = layout;
+        self.layout
+            .store(layout.as_raw(), std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn width(&self) -> u32 {
@@ -2479,7 +2513,7 @@ impl DescriptorSet {
                         self.resources.push(image_view.clone());
                         image_infos.push(
                             vk::DescriptorImageInfo::builder()
-                                .image_layout(image_view.image.layout)
+                                .image_layout(image_view.image.layout())
                                 .image_view(image_view.handle)
                                 .build(),
                         );

@@ -1,1 +1,1 @@
-mod quad;
+pub mod quad;

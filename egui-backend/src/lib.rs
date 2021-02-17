@@ -431,6 +431,7 @@ impl UiPass {
             vk::Format::B8G8R8A8_UNORM,
             egui_texture.width as u32,
             egui_texture.height as u32,
+            vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
             MemoryUsage::GpuOnly,
         );

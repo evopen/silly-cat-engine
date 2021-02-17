@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 safe-vk = { path = "../safe-vk" }
 egui-backend = { path = "../egui-backend" }
+render-pass = { path = "../render-pass" }
 tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
 egui_winit_platform = "0.4.0"
 winit = "0.24.0"

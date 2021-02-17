@@ -14,7 +14,7 @@ impl Quad {
         let set_layout = safe_vk::DescriptorSetLayout::new(
             device.clone(),
             Some("quad set layout"),
-            vec![
+            &[
                 safe_vk::DescriptorSetLayoutBinding {
                     binding: 1,
                     descriptor_type: safe_vk::DescriptorType::Sampler(Some(Arc::new(sampler))),
@@ -47,7 +47,7 @@ impl Quad {
                 .attachments(&[vk::AttachmentDescription::builder()
                     .format(vk::Format::B8G8R8A8_UNORM)
                     .samples(vk::SampleCountFlags::TYPE_1)
-                    .load_op(vk::AttachmentLoadOp::LOAD)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
                     .initial_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)

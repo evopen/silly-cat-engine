@@ -95,30 +95,27 @@ impl UiPass {
             device.clone(),
             Some("uniform"),
             &[
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(0)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .descriptor_count(1)
-                    .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .descriptor_count(1)
-                    .build(),
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 0,
+                    descriptor_type: safe_vk::DescriptorType::UniformBuffer,
+                    stage_flags: vk::ShaderStageFlags::VERTEX,
+                },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 1,
+                    descriptor_type: safe_vk::DescriptorType::Sampler(None),
+                    stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                },
             ],
         ));
 
         let texture_descriptor_set_layout = Arc::new(safe_vk::DescriptorSetLayout::new(
             device.clone(),
             Some("texture"),
-            &[vk::DescriptorSetLayoutBinding::builder()
-                .binding(0)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .descriptor_count(1)
-                .build()],
+            &[safe_vk::DescriptorSetLayoutBinding {
+                binding: 0,
+                descriptor_type: safe_vk::DescriptorType::SampledImage,
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            }],
         ));
 
         let pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(

@@ -435,7 +435,7 @@ pub struct Buffer {
     allocator: Arc<Allocator>,
     handle: vk::Buffer,
     allocation: vk_mem::Allocation,
-    mapped: bool,
+    mapped: std::sync::atomic::AtomicBool,
     device_address: vk::DeviceAddress,
     size: usize,
     allocation_info: vk_mem::AllocationInfo,
@@ -506,7 +506,7 @@ impl Buffer {
             Self {
                 handle,
                 allocation,
-                mapped: false,
+                mapped: std::sync::atomic::AtomicBool::new(false),
                 device_address,
                 size: size.to_usize().unwrap(),
                 allocator,
@@ -588,19 +588,31 @@ impl Buffer {
         buffer
     }
 
-    pub fn map(&mut self) -> *mut u8 {
+    pub fn map(&self) -> *mut u8 {
         if self.is_device_local() {
             panic!("cannot map device local memory");
         }
-        self.mapped = true;
+        self.mapped
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .expect("already mapped");
         self.allocator.handle.map_memory(&self.allocation).unwrap()
     }
 
-    pub fn unmap(&mut self) {
-        if self.mapped {
-            self.allocator.handle.unmap_memory(&self.allocation);
-            self.mapped = false;
-        }
+    pub fn unmap(&self) {
+        self.mapped
+            .compare_exchange(
+                true,
+                false,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .expect("not mapped");
+        self.allocator.handle.unmap_memory(&self.allocation);
     }
 
     pub fn memory_type(&self) -> u32 {
@@ -630,7 +642,7 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        if self.mapped {
+        if self.mapped.load(std::sync::atomic::Ordering::SeqCst) {
             self.unmap();
         }
         self.allocator

@@ -837,12 +837,14 @@ impl Engine {
     pub fn input(&mut self, event: &winit::event::Event<()>) -> Result<()> {
         match event {
             winit::event::Event::NewEvents(_) => {}
-            winit::event::Event::WindowEvent { window_id, event } => match event {
-                winit::event::WindowEvent::Resized(_) => {
-                    self.swapchain.renew()?;
+            winit::event::Event::WindowEvent { window_id, event } => {
+                match event {
+                    winit::event::WindowEvent::Resized(_) => {
+                        self.swapchain.renew()?;
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             winit::event::Event::DeviceEvent { device_id, event } => {}
             winit::event::Event::UserEvent(_) => {}
             winit::event::Event::Suspended => {}

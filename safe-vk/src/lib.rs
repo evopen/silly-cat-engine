@@ -48,6 +48,7 @@ pub mod name {
                 pub const ACCELERATION_STRUCTURE: &str = "VK_KHR_acceleration_structure";
                 pub const BUFFER_DEVICE_ADDRESS: &str = "VK_KHR_buffer_device_address";
                 pub const SHADER_NON_SEMANTIC_INFO: &str = "VK_KHR_shader_non_semantic_info";
+                pub const RAY_QUERY: &str = "VK_KHR_ray_query";
             }
         }
     }

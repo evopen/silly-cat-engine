@@ -614,6 +614,9 @@ impl Buffer {
                 &[1],
             );
             timeline_semaphore.wait_for(1);
+        } else {
+            buffer.copy_from(data);
+            buffer.flush();
         }
         buffer
     }

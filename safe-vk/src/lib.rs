@@ -2040,6 +2040,7 @@ pub enum DescriptorType {
     SampledImage,
     UniformBuffer,
     StorageBuffer,
+    AccelerationStructure,
 }
 
 #[derive(Clone)]
@@ -2104,6 +2105,14 @@ impl DescriptorSetLayout {
                         vk::DescriptorSetLayoutBinding::builder()
                             .binding(binding.binding)
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .descriptor_count(1)
+                            .stage_flags(binding.stage_flags)
+                            .build()
+                    }
+                    DescriptorType::AccelerationStructure => {
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(binding.binding)
+                            .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
                             .descriptor_count(1)
                             .stage_flags(binding.stage_flags)
                             .build()

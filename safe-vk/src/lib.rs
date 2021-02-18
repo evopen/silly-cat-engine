@@ -588,7 +588,7 @@ impl Buffer {
                 | vk::BufferUsageFlags::TRANSFER_DST,
             memory_usage,
         );
-        if buffer.is_device_local() {
+        if buffer.is_mappable() {
             let staging_buffer = Arc::new(Self::new(
                 Some("staging buffer"),
                 allocator.clone(),
@@ -619,8 +619,8 @@ impl Buffer {
     }
 
     pub fn map(&self) -> *mut u8 {
-        if self.is_device_local() {
-            panic!("cannot map device local memory");
+        if self.is_mappable() {
+            panic!("memory is not mappable");
         }
         self.mapped
             .compare_exchange(
@@ -667,6 +667,10 @@ impl Buffer {
 
     pub fn is_device_local(&self) -> bool {
         self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw() != 0
+    }
+
+    pub fn is_mappable(&self) -> bool {
+        self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::HOST_VISIBLE.as_raw() != 0
     }
 }
 

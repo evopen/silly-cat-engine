@@ -588,7 +588,7 @@ impl Buffer {
                 | vk::BufferUsageFlags::TRANSFER_DST,
             memory_usage,
         );
-        if buffer.is_mappable() {
+        if !buffer.is_mappable() {
             let staging_buffer = Arc::new(Self::new(
                 Some("staging buffer"),
                 allocator.clone(),
@@ -619,7 +619,7 @@ impl Buffer {
     }
 
     pub fn map(&self) -> *mut u8 {
-        if self.is_mappable() {
+        if !self.is_mappable() {
             panic!("memory is not mappable");
         }
         self.mapped

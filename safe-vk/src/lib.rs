@@ -676,7 +676,7 @@ impl Buffer {
     pub fn flush(&self) {
         self.allocator
             .handle
-            .flush_allocation(&self.allocation, 0, vk::WHOLE_SIZE);
+            .flush_allocation(&self.allocation, 0, vk::WHOLE_SIZE as usize);
     }
 }
 

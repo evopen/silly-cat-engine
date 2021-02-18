@@ -2417,10 +2417,13 @@ pub struct RayTracingPipeline {
     handle: vk::Pipeline,
     layout: Arc<PipelineLayout>,
     stages: Vec<Arc<ShaderStage>>,
+    sbt_buffer: Buffer,
 }
 
 impl RayTracingPipeline {
     pub fn new(
+        name: Option<&str>,
+        allocator: Arc<Allocator>,
         layout: Arc<PipelineLayout>,
         stages: Vec<Arc<ShaderStage>>,
         recursion_depth: u32,
@@ -2486,12 +2489,73 @@ impl RayTracingPipeline {
                 .first()
                 .unwrap()
                 .to_owned();
+
+            if let Some(name) = name {
+                device
+                    .pdevice
+                    .instance
+                    .debug_utils_loader
+                    .debug_utils_set_object_name(
+                        device.handle.handle(),
+                        &vk::DebugUtilsObjectNameInfoEXT::builder()
+                            .object_handle(handle.as_raw())
+                            .object_type(vk::ObjectType::PIPELINE)
+                            .object_name(CString::new(name).unwrap().as_ref())
+                            .build(),
+                    )
+                    .unwrap();
+            }
+
+            let rt_p = &device.pdevice.ray_tracing_pipeline_properties;
+
+            let shader_handle_storage = device
+                .ray_tracing_pipeline_loader
+                .get_ray_tracing_shader_group_handles(
+                    handle,
+                    0,
+                    group_create_infos.len() as u32,
+                    rt_p.shader_group_handle_size as usize * group_create_infos.len(),
+                )
+                .unwrap();
+            assert!(rt_p.shader_group_base_alignment % rt_p.shader_group_handle_alignment == 0);
+            let sbt_stride = rt_p.shader_group_base_alignment
+                * ((rt_p.shader_group_handle_size + rt_p.shader_group_base_alignment - 1)
+                    / rt_p.shader_group_base_alignment);
+            assert!(sbt_stride <= rt_p.max_shader_group_stride);
+            assert!(sbt_stride == 64);
+
+            let sbt_size = sbt_stride * group_create_infos.len() as u32;
+            let sbt_buffer = Buffer::new(
+                Some("sbt buffer"),
+                allocator.clone(),
+                sbt_size,
+                vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                MemoryUsage::GpuOnly,
+            );
+            let ptr = sbt_buffer.map();
+            for group_index in 0..group_create_infos.len() {
+                std::ptr::copy_nonoverlapping(
+                    shader_handle_storage
+                        .as_ptr()
+                        .add(group_index * sbt_stride as usize),
+                    ptr,
+                    rt_p.shader_group_handle_size as usize,
+                );
+            }
+            sbt_buffer.unmap();
+
             Self {
                 handle,
                 layout,
                 stages,
+                sbt_buffer,
             }
         }
+    }
+
+    pub fn sbt_buffer(&self) -> &Buffer {
+        &self.sbt_buffer
     }
 }
 

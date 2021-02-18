@@ -688,7 +688,8 @@ impl Drop for Buffer {
 pub struct Queue {
     handle: vk::Queue,
     device: Arc<Device>,
-    command_buffers: HashMap<vk::CommandBuffer, (Arc<Mutex<bool>>, CommandBuffer)>,
+    command_buffers:
+        HashMap<vk::CommandBuffer, (Arc<std::sync::atomic::AtomicBool>, CommandBuffer)>,
 }
 
 impl Queue {
@@ -708,10 +709,8 @@ impl Queue {
     pub fn clean_command_buffers(&mut self) {
         let mut removal_list = Vec::with_capacity(self.command_buffers.len());
         for (handle, (in_use, _)) in self.command_buffers.iter() {
-            if let Ok(in_use_locked) = in_use.try_lock() {
-                if !*in_use_locked {
-                    removal_list.push(*handle);
-                }
+            if !in_use.load(std::sync::atomic::Ordering::SeqCst) {
+                removal_list.push(*handle);
             }
         }
         for removal in removal_list {
@@ -743,7 +742,7 @@ impl Queue {
 
         let fence = Arc::new(Fence::new(self.device.clone(), false));
 
-        let in_use = Arc::new(Mutex::new(true));
+        let in_use = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let in_use_signaler = in_use.clone();
 
         unsafe {
@@ -755,7 +754,7 @@ impl Queue {
         let fence_cloned = fence.clone();
         let _task = tokio::task::spawn(async move {
             fence_cloned.wait();
-            *in_use_signaler.lock().unwrap() = false;
+            in_use_signaler.store(false, std::sync::atomic::Ordering::SeqCst);
         });
 
         self.command_buffers
@@ -798,7 +797,7 @@ impl Queue {
                 .queue_submit(self.handle, &[submit_info], fence.handle)
                 .unwrap();
 
-            let in_use = Arc::new(Mutex::new(true));
+            let in_use = Arc::new(std::sync::atomic::AtomicBool::new(true));
             let in_use_signaler = in_use.clone();
 
             self.command_buffers
@@ -806,7 +805,7 @@ impl Queue {
 
             tokio::task::spawn(async move {
                 fence.wait();
-                *in_use_signaler.lock().unwrap() = false;
+                in_use_signaler.store(false, std::sync::atomic::Ordering::SeqCst);
             });
         }
     }

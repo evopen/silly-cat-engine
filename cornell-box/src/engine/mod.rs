@@ -31,9 +31,8 @@ pub struct Engine {
     render_finish_fence: Arc<safe_vk::Fence>,
     allocator: Arc<safe_vk::Allocator>,
     scene: gltf_wrapper::Scene,
-    pipeline: Arc<safe_vk::ComputePipeline>,
+    pipeline: Arc<safe_vk::RayTracingPipeline>,
     descriptor_set: Arc<safe_vk::DescriptorSet>,
-    storage_buffer: Arc<safe_vk::Buffer>,
     quad: render_pass::quad::Quad,
     result_image: Arc<safe_vk::Image>,
 }
@@ -98,11 +97,18 @@ impl Engine {
         let descriptor_set_layout = Arc::new(safe_vk::DescriptorSetLayout::new(
             device.clone(),
             Some("descriptor set layout"),
-            &[safe_vk::DescriptorSetLayoutBinding {
-                binding: 0,
-                descriptor_type: safe_vk::DescriptorType::StorageBuffer,
-                stage_flags: vk::ShaderStageFlags::COMPUTE,
-            }],
+            &[
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 0,
+                    descriptor_type: safe_vk::DescriptorType::StorageImage,
+                    stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
+                },
+                // safe_vk::DescriptorSetLayoutBinding {
+                //     binding: 1,
+                //     descriptor_type: safe_vk::DescriptorType::AccelerationStructure,
+                //     stage_flags: vk::ShaderStageFlags::COMPUTE,
+                // },
+            ],
         ));
 
         let pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
@@ -111,60 +117,13 @@ impl Engine {
             &[&descriptor_set_layout],
         ));
 
-        let mut descriptor_set = safe_vk::DescriptorSet::new(
-            Some("Main descriptor set"),
-            Arc::new(safe_vk::DescriptorPool::new(
-                device.clone(),
-                &[vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(1)
-                    .build()],
-                1,
-            )),
-            descriptor_set_layout.clone(),
-        );
-
-        let storage_buffer = Arc::new(safe_vk::Buffer::new(
-            Some("storage buffer"),
-            allocator.clone(),
-            (std::mem::size_of::<f32>() * 3) as u32 * WIDTH * HEIGHT,
-            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_SRC,
-            safe_vk::MemoryUsage::CpuToGpu,
-        ));
-
-        descriptor_set.update(&[safe_vk::DescriptorSetUpdateInfo {
-            binding: 0,
-            detail: safe_vk::DescriptorSetUpdateDetail::Buffer(storage_buffer.clone()),
-        }]);
-
-        let descriptor_set = Arc::new(descriptor_set);
-
-        let shader_module = safe_vk::ShaderModule::new(
-            device.clone(),
-            shaders::Shaders::get("raytrace.comp.spv").unwrap(),
-        );
-
-        let shader_stage = Arc::new(safe_vk::ShaderStage::new(
-            shader_module,
-            vk::ShaderStageFlags::COMPUTE,
-            "main",
-        ));
-
-        let pipeline = Arc::new(safe_vk::ComputePipeline::new(
-            Some("compute pipeline"),
-            pipeline_layout,
-            shader_stage,
-        ));
-
-        let mut quad = render_pass::quad::Quad::new(device.clone());
-
         let mut result_image = safe_vk::Image::new(
             Some("result image"),
             allocator.clone(),
-            vk::Format::R32G32B32_SFLOAT,
+            vk::Format::R32G32B32A32_SFLOAT,
             WIDTH,
             HEIGHT,
-            vk::ImageTiling::LINEAR,
+            vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::SAMPLED
                 | vk::ImageUsageFlags::TRANSFER_DST
                 | vk::ImageUsageFlags::TRANSFER_SRC,
@@ -176,6 +135,47 @@ impl Engine {
         let result_image = Arc::new(result_image);
 
         let result_image_view = Arc::new(safe_vk::ImageView::new(result_image.clone()));
+
+        let mut descriptor_set = safe_vk::DescriptorSet::new(
+            Some("Main descriptor set"),
+            Arc::new(safe_vk::DescriptorPool::new(
+                device.clone(),
+                &[vk::DescriptorPoolSize::builder()
+                    .ty(vk::DescriptorType::STORAGE_IMAGE)
+                    .descriptor_count(1)
+                    .build()],
+                1,
+            )),
+            descriptor_set_layout.clone(),
+        );
+
+        descriptor_set.update(&[safe_vk::DescriptorSetUpdateInfo {
+            binding: 0,
+            detail: safe_vk::DescriptorSetUpdateDetail::Image(result_image_view.clone()),
+        }]);
+
+        let descriptor_set = Arc::new(descriptor_set);
+
+        let shader_module = safe_vk::ShaderModule::new(
+            device.clone(),
+            shaders::Shaders::get("raytrace.rgen.spv").unwrap(),
+        );
+
+        let shader_stage = Arc::new(safe_vk::ShaderStage::new(
+            shader_module,
+            vk::ShaderStageFlags::RAYGEN_KHR,
+            "main",
+        ));
+
+        let pipeline = Arc::new(safe_vk::RayTracingPipeline::new(
+            Some("rt pipeline"),
+            allocator.clone(),
+            pipeline_layout,
+            vec![shader_stage],
+            4,
+        ));
+
+        let mut quad = render_pass::quad::Quad::new(device.clone());
         quad.update_texture(result_image_view.clone());
 
         let scene = gltf_wrapper::Scene::from_file(
@@ -199,40 +199,39 @@ impl Engine {
             scene,
             pipeline,
             descriptor_set,
-            storage_buffer,
             quad,
             result_image,
         }
     }
 
-    pub fn render_once(&mut self) {
-        let mut command_buffer = safe_vk::CommandBuffer::new(self.command_pool.clone());
-        command_buffer.encode(|rec| {
-            rec.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
-                rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
+    // pub fn render_once(&mut self) {
+    //     let mut command_buffer = safe_vk::CommandBuffer::new(self.command_pool.clone());
+    //     command_buffer.encode(|rec| {
+    //         rec.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
+    //             rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
 
-                rec.dispatch(
-                    (WIDTH as f32 / WORKGROUP_WIDTH as f32).ceil() as u32,
-                    (HEIGHT as f32 / WORKGROUP_HEIGHT as f32).ceil() as u32,
-                    1,
-                );
-            });
-        });
-        self.queue
-            .submit_binary(command_buffer, &[], &[], &[])
-            .wait();
-        let mapped = self.storage_buffer.map();
-        let mapped = unsafe { std::mem::transmute(mapped) };
-        let data: &[image::Rgb<f32>] =
-            unsafe { std::slice::from_raw_parts(mapped, (WIDTH * HEIGHT) as usize) };
-        let f = std::fs::File::create("./hello.hdr").unwrap();
-        let encoder = image::hdr::HdrEncoder::new(f);
+    //             rec.dispatch(
+    //                 (WIDTH as f32 / WORKGROUP_WIDTH as f32).ceil() as u32,
+    //                 (HEIGHT as f32 / WORKGROUP_HEIGHT as f32).ceil() as u32,
+    //                 1,
+    //             );
+    //         });
+    //     });
+    //     self.queue
+    //         .submit_binary(command_buffer, &[], &[], &[])
+    //         .wait();
+    //     let mapped = self.storage_buffer.map();
+    //     let mapped = unsafe { std::mem::transmute(mapped) };
+    //     let data: &[image::Rgb<f32>] =
+    //         unsafe { std::slice::from_raw_parts(mapped, (WIDTH * HEIGHT) as usize) };
+    //     let f = std::fs::File::create("./hello.hdr").unwrap();
+    //     let encoder = image::hdr::HdrEncoder::new(f);
 
-        encoder
-            .encode(data, WIDTH as usize, HEIGHT as usize)
-            .unwrap();
-        self.storage_buffer.unmap();
-    }
+    //     encoder
+    //         .encode(data, WIDTH as usize, HEIGHT as usize)
+    //         .unwrap();
+    //     self.storage_buffer.unmap();
+    // }
 
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
         self.ui_platform.handle_event(event);
@@ -284,89 +283,105 @@ impl Engine {
         let mut command_buffer = safe_vk::CommandBuffer::new(self.command_pool.clone());
 
         let target_image = self.swapchain_images[index as usize].clone();
-        command_buffer.encode(|recorder| {
-            recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
-                rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
 
-                rec.dispatch(
-                    (WIDTH as f32 / WORKGROUP_WIDTH as f32).ceil() as u32,
-                    (HEIGHT as f32 / WORKGROUP_HEIGHT as f32).ceil() as u32,
-                    1,
-                );
+        let sbt_ray_gen_region = vk::StridedDeviceAddressRegionKHR::builder()
+            .device_address(self.pipeline.sbt_buffer().device_address())
+            .stride(64)
+            .size(32)
+            .build();
+        let mut sbt_hit_region = sbt_ray_gen_region;
+        sbt_hit_region.size = 0;
+        let mut sbt_miss_region = sbt_ray_gen_region;
+        sbt_miss_region.size = 0;
+        let mut sbt_callable_region = sbt_ray_gen_region;
+        sbt_callable_region.size = 0;
+
+        command_buffer.encode(|recorder| {
+            // recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
+            //     rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
+
+            //     rec.dispatch(
+            //         (WIDTH as f32 / WORKGROUP_WIDTH as f32).ceil() as u32,
+            //         (HEIGHT as f32 / WORKGROUP_HEIGHT as f32).ceil() as u32,
+            //         1,
+            //     );
+            // });
+            recorder.bind_ray_tracing_pipeline(self.pipeline.clone(), |rec, pipeline| {
+                rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
+                // rec.trace_ray(
+                //     &sbt_ray_gen_region,
+                //     &sbt_miss_region,
+                //     &sbt_hit_region,
+                //     &sbt_callable_region,
+                //     WIDTH,
+                //     HEIGHT,
+                //     1,
+                // );
             });
-            recorder.set_image_layout(
-                self.result_image.clone(),
-                Some(vk::ImageLayout::UNDEFINED),
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            );
-            recorder.copy_buffer_to_image(
-                self.storage_buffer.clone(),
-                self.result_image.clone(),
-                &[vk::BufferImageCopy::builder()
-                    .image_extent(vk::Extent3D {
-                        width: self.result_image.width(),
-                        height: self.result_image.height(),
-                        depth: 1,
-                    })
-                    .image_subresource(
-                        vk::ImageSubresourceLayers::builder()
-                            .aspect_mask(vk::ImageAspectFlags::COLOR)
-                            .layer_count(1)
-                            .base_array_layer(0)
-                            .mip_level(0)
-                            .build(),
-                    )
-                    .build()],
-            );
-            recorder.set_image_layout(
-                self.result_image.clone(),
-                None,
-                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            );
-            recorder.set_image_layout(
-                target_image.clone(),
-                Some(vk::ImageLayout::UNDEFINED),
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            );
-            recorder.blit_image(
-                self.result_image.clone(),
-                target_image.clone(),
-                &[vk::ImageBlit::builder()
-                    .src_subresource(
-                        vk::ImageSubresourceLayers::builder()
-                            .aspect_mask(vk::ImageAspectFlags::COLOR)
-                            .layer_count(1)
-                            .base_array_layer(0)
-                            .mip_level(0)
-                            .build(),
-                    )
-                    .src_offsets([
-                        vk::Offset3D { x: 0, y: 0, z: 0 },
-                        vk::Offset3D {
-                            x: self.result_image.width() as i32,
-                            y: self.result_image.height() as i32,
-                            z: 1,
-                        },
-                    ])
-                    .dst_offsets([
-                        vk::Offset3D { x: 0, y: 0, z: 0 },
-                        vk::Offset3D {
-                            x: target_image.width() as i32,
-                            y: target_image.height() as i32,
-                            z: 1,
-                        },
-                    ])
-                    .dst_subresource(
-                        vk::ImageSubresourceLayers::builder()
-                            .aspect_mask(vk::ImageAspectFlags::COLOR)
-                            .layer_count(1)
-                            .base_array_layer(0)
-                            .mip_level(0)
-                            .build(),
-                    )
-                    .build()],
-                vk::Filter::NEAREST,
-            );
+            // recorder.set_image_layout(
+            //     self.result_image.clone(),
+            //     Some(vk::ImageLayout::GENERAL),
+            //     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            // );
+            // recorder.copy_buffer_to_image(
+            //     self.storage_buffer.clone(),
+            //     self.result_image.clone(),
+            //     &[vk::BufferImageCopy::builder()
+            //         .image_extent(vk::Extent3D {
+            //             width: self.result_image.width(),
+            //             height: self.result_image.height(),
+            //             depth: 1,
+            //         })
+            //         .image_subresource(
+            //             vk::ImageSubresourceLayers::builder()
+            //                 .aspect_mask(vk::ImageAspectFlags::COLOR)
+            //                 .layer_count(1)
+            //                 .base_array_layer(0)
+            //                 .mip_level(0)
+            //                 .build(),
+            //         )
+            //         .build()],
+            // );
+
+            // recorder.blit_image(
+            //     self.result_image.clone(),
+            //     target_image.clone(),
+            //     &[vk::ImageBlit::builder()
+            //         .src_subresource(
+            //             vk::ImageSubresourceLayers::builder()
+            //                 .aspect_mask(vk::ImageAspectFlags::COLOR)
+            //                 .layer_count(1)
+            //                 .base_array_layer(0)
+            //                 .mip_level(0)
+            //                 .build(),
+            //         )
+            //         .src_offsets([
+            //             vk::Offset3D { x: 0, y: 0, z: 0 },
+            //             vk::Offset3D {
+            //                 x: self.result_image.width() as i32,
+            //                 y: self.result_image.height() as i32,
+            //                 z: 1,
+            //             },
+            //         ])
+            //         .dst_offsets([
+            //             vk::Offset3D { x: 0, y: 0, z: 0 },
+            //             vk::Offset3D {
+            //                 x: target_image.width() as i32,
+            //                 y: target_image.height() as i32,
+            //                 z: 1,
+            //             },
+            //         ])
+            //         .dst_subresource(
+            //             vk::ImageSubresourceLayers::builder()
+            //                 .aspect_mask(vk::ImageAspectFlags::COLOR)
+            //                 .layer_count(1)
+            //                 .base_array_layer(0)
+            //                 .mip_level(0)
+            //                 .build(),
+            //         )
+            //         .build()],
+            //     vk::Filter::NEAREST,
+            // );
             recorder.set_image_layout(
                 target_image.clone(),
                 None,

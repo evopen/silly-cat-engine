@@ -1,0 +1,22 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_GOOGLE_include_directive : require
+
+layout(binding = 0, set = 0, rgba32f) uniform image2D storage_image;
+
+void main()
+{
+    const vec2 resolution = imageSize(storage_image);
+    const ivec2 pixel = ivec2(gl_LaunchIDEXT.xy);
+
+    if ((pixel.x >= resolution.x) || (pixel.y >= resolution.y)) {
+        return;
+    }
+
+    vec4 color = vec4(pixel.x / float(resolution.x), //
+        pixel.y / float(resolution.y), //
+        0.0, //
+        0.0);
+    imageStore(storage_image, pixel, color);
+}

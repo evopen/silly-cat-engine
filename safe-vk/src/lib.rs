@@ -1,7 +1,7 @@
 #![feature(negative_impls)]
 #![allow(unused)]
 
-use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0};
+use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0, InstanceV1_1};
 
 use anyhow::Result;
 
@@ -148,11 +148,22 @@ impl Drop for Instance {
     }
 }
 
+pub struct PhysicalDeviceRayTracingPipelineProperties {
+    pub shader_group_handle_size: u32,
+    pub max_ray_recursion_depth: u32,
+    pub max_shader_group_stride: u32,
+    pub shader_group_base_alignment: u32,
+    pub max_ray_dispatch_invocation_count: u32,
+    pub shader_group_handle_alignment: u32,
+    pub max_ray_hit_attribute_size: u32,
+}
+
 pub struct PhysicalDevice {
     handle: vk::PhysicalDevice,
     instance: Arc<Instance>,
     queue_family_index: u32,
     surface: Option<Arc<Surface>>,
+    ray_tracing_pipeline_properties: PhysicalDeviceRayTracingPipelineProperties,
 }
 
 impl PhysicalDevice {
@@ -219,11 +230,29 @@ impl PhysicalDevice {
                 .next()
                 .unwrap();
 
+            let mut props = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+            instance.handle.get_physical_device_properties2(
+                pdevice,
+                &mut vk::PhysicalDeviceProperties2::builder()
+                    .push_next(&mut props)
+                    .build(),
+            );
+            let ray_tracing_pipeline_properties = PhysicalDeviceRayTracingPipelineProperties {
+                shader_group_handle_size: props.shader_group_handle_size,
+                max_ray_recursion_depth: props.max_ray_recursion_depth,
+                max_shader_group_stride: props.max_shader_group_stride,
+                shader_group_base_alignment: props.shader_group_base_alignment,
+                max_ray_dispatch_invocation_count: props.max_ray_dispatch_invocation_count,
+                shader_group_handle_alignment: props.shader_group_handle_alignment,
+                max_ray_hit_attribute_size: props.max_ray_hit_attribute_size,
+            };
+
             Self {
                 handle: pdevice,
                 instance,
                 queue_family_index: queue_family_index as u32,
                 surface,
+                ray_tracing_pipeline_properties,
             }
         }
     }

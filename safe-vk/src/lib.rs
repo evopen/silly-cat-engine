@@ -2488,6 +2488,7 @@ impl RayTracingPipeline {
         layout: Arc<PipelineLayout>,
         stages: Vec<Arc<ShaderStage>>,
         recursion_depth: u32,
+        queue: &mut Queue,
     ) -> Self {
         let device = &layout.device;
         let stage_create_infos = stages
@@ -2594,17 +2595,27 @@ impl RayTracingPipeline {
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 MemoryUsage::GpuOnly,
             );
-            let ptr = sbt_buffer.map();
+            let mut temp: Vec<u8> = vec![0; sbt_size as usize];
             for group_index in 0..group_create_infos.len() {
                 std::ptr::copy_nonoverlapping(
                     shader_handle_storage
                         .as_ptr()
                         .add(group_index * sbt_stride as usize),
-                    ptr,
+                    temp.as_mut_ptr(),
                     rt_p.shader_group_handle_size as usize,
                 );
             }
-            sbt_buffer.unmap();
+            let command_pool = Arc::new(CommandPool::new(device.clone()));
+            let sbt_buffer = Buffer::new_init_device(
+                Some("sbt buffer"),
+                allocator.clone(),
+                vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                MemoryUsage::GpuOnly,
+                queue,
+                command_pool.clone(),
+                temp,
+            );
 
             Self {
                 handle,

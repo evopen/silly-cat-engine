@@ -672,6 +672,12 @@ impl Buffer {
     pub fn is_mappable(&self) -> bool {
         self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::HOST_VISIBLE.as_raw() != 0
     }
+
+    pub fn flush(&self) {
+        self.allocator
+            .handle
+            .flush_allocation(&self.allocation, 0, vk::WHOLE_SIZE);
+    }
 }
 
 impl Drop for Buffer {

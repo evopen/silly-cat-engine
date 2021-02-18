@@ -1002,6 +1002,19 @@ pub trait ComputePipelineRecorder: PipelineRecorder {
     fn dispatch(&self, group_count_x: u32, group_count_y: u32, group_count_z: u32);
 }
 
+pub trait RayTracingPipelineRecorder: PipelineRecorder {
+    fn trace_ray(
+        &self,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        width: u32,
+        height: u32,
+        depth: u32,
+    );
+}
+
 pub trait PipelineRecorder {
     fn bind_descriptor_sets(
         &mut self,
@@ -1038,6 +1051,32 @@ impl<'a> PipelineRecorder for CommandRecorder<'a> {
         descriptor_sets
             .into_iter()
             .for_each(|set| self.command_buffer.resources.push(set));
+    }
+}
+
+impl<'a> RayTracingPipelineRecorder for CommandRecorder<'a> {
+    fn trace_ray(
+        &self,
+        raygen_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        miss_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        hit_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        callable_shader_binding_table: &vk::StridedDeviceAddressRegionKHR,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) {
+        unsafe {
+            self.device().ray_tracing_pipeline_loader.cmd_trace_rays(
+                self.command_buffer.handle,
+                raygen_shader_binding_table,
+                miss_shader_binding_table,
+                hit_shader_binding_table,
+                callable_shader_binding_table,
+                width,
+                height,
+                depth,
+            );
+        }
     }
 }
 
@@ -1217,6 +1256,22 @@ impl<'a> CommandRecorder<'a> {
                 pipeline.handle,
             );
             self.bind_point = Some(vk::PipelineBindPoint::COMPUTE);
+            f(self, pipeline.as_ref());
+        }
+        self.command_buffer.resources.push(pipeline);
+    }
+
+    pub fn bind_ray_tracing_pipeline<I>(&mut self, pipeline: Arc<RayTracingPipeline>, f: I)
+    where
+        I: FnOnce(&mut dyn RayTracingPipelineRecorder, &dyn Pipeline),
+    {
+        unsafe {
+            self.device().handle.cmd_bind_pipeline(
+                self.command_buffer.handle,
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
+                pipeline.handle,
+            );
+            self.bind_point = Some(vk::PipelineBindPoint::RAY_TRACING_KHR);
             f(self, pipeline.as_ref());
         }
         self.command_buffer.resources.push(pipeline);

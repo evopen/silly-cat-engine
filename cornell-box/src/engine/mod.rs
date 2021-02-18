@@ -174,6 +174,11 @@ impl Engine {
             &mut queue,
         ));
 
+        let scene = gltf_wrapper::Scene::from_file(
+            allocator.clone(),
+            "./cornell-box/models/CornellBox.glb",
+        );
+
         Self {
             ui_platform,
             size,

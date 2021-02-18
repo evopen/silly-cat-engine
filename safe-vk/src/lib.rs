@@ -619,9 +619,6 @@ impl Buffer {
     }
 
     pub fn map(&self) -> *mut u8 {
-        if !self.is_mappable() {
-            panic!("memory is not mappable");
-        }
         self.mapped
             .compare_exchange(
                 false,

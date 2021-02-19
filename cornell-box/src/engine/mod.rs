@@ -101,11 +101,11 @@ impl Engine {
                     descriptor_type: safe_vk::DescriptorType::StorageImage,
                     stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
                 },
-                // safe_vk::DescriptorSetLayoutBinding {
-                //     binding: 1,
-                //     descriptor_type: safe_vk::DescriptorType::AccelerationStructure,
-                //     stage_flags: vk::ShaderStageFlags::COMPUTE,
-                // },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 1,
+                    descriptor_type: safe_vk::DescriptorType::AccelerationStructure,
+                    stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
+                },
             ],
         ));
 
@@ -147,10 +147,23 @@ impl Engine {
             descriptor_set_layout.clone(),
         );
 
-        descriptor_set.update(&[safe_vk::DescriptorSetUpdateInfo {
-            binding: 0,
-            detail: safe_vk::DescriptorSetUpdateDetail::Image(result_image_view.clone()),
-        }]);
+        let scene = gltf_wrapper::Scene::from_file(
+            allocator.clone(),
+            "./cornell-box/models/CornellBox.glb",
+        );
+
+        descriptor_set.update(&[
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 0,
+                detail: safe_vk::DescriptorSetUpdateDetail::Image(result_image_view.clone()),
+            },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 1,
+                detail: safe_vk::DescriptorSetUpdateDetail::AccelerationStructure(
+                    scene.tlas().clone(),
+                ),
+            },
+        ]);
 
         let descriptor_set = Arc::new(descriptor_set);
 
@@ -173,11 +186,6 @@ impl Engine {
             4,
             &mut queue,
         ));
-
-        let scene = gltf_wrapper::Scene::from_file(
-            allocator.clone(),
-            "./cornell-box/models/CornellBox.glb",
-        );
 
         Self {
             ui_platform,

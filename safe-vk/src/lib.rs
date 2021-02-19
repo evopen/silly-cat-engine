@@ -804,23 +804,25 @@ impl Queue {
                 .map(|s| s.handle)
                 .collect::<Vec<vk::Semaphore>>();
 
-            let submit_info = vk::SubmitInfo::builder()
-                .command_buffers(&[command_buffer.handle])
-                .wait_semaphores(&semaphore_handles)
-                .wait_dst_stage_mask(wait_stages)
-                .signal_semaphores(&semaphore_handles)
-                .push_next(
-                    &mut vk::TimelineSemaphoreSubmitInfo::builder()
-                        .wait_semaphore_values(wait_values)
-                        .signal_semaphore_values(signal_values)
-                        .build(),
-                )
-                .build();
-
             let fence = Fence::new(self.device.clone(), false);
             self.device
                 .handle
-                .queue_submit(self.handle, &[submit_info], fence.handle)
+                .queue_submit(
+                    self.handle,
+                    &[vk::SubmitInfo::builder()
+                        .command_buffers(&[command_buffer.handle])
+                        .wait_semaphores(&semaphore_handles)
+                        .wait_dst_stage_mask(wait_stages)
+                        .signal_semaphores(&semaphore_handles)
+                        .push_next(
+                            &mut vk::TimelineSemaphoreSubmitInfo::builder()
+                                .wait_semaphore_values(wait_values)
+                                .signal_semaphore_values(signal_values)
+                                .build(),
+                        )
+                        .build()],
+                    fence.handle,
+                )
                 .unwrap();
 
             let in_use = Arc::new(std::sync::atomic::AtomicBool::new(true));

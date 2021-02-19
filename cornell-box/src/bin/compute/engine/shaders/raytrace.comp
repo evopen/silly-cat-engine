@@ -39,9 +39,10 @@ void main()
         rayDirection, // Ray direction
         10000.0); // Maximum t-value
 
-    rayQueryProceedEXT(rayQuery);
+    while (rayQueryProceedEXT(rayQuery)) {
+    }
 
-    // const float t = rayQueryGetIntersectionTEXT(rayQuery, true);
+    const float t = rayQueryGetIntersectionTEXT(rayQuery, true);
 
     const vec3 pixel_color = vec3(float(pixel.x) / RESOLUTION.x, // Red
         float(pixel.y) / RESOLUTION.y, // Green
@@ -51,7 +52,7 @@ void main()
     uint linearIndex = RESOLUTION.x * pixel.y + pixel.x;
     // Write the color to the buffer.
 
-    imageStore(storage_image, ivec2(pixel), vec4(pixel_color, 1.0));
+    imageStore(storage_image, ivec2(pixel), vec4(vec3(t / 10), 1.0));
 
     debugPrintfEXT("Color %v3f\n", pixel_color);
 }

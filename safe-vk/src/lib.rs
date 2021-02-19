@@ -2789,7 +2789,9 @@ impl DescriptorSet {
                                 .build(),
                         );
 
-                        write_builder.buffer_info(buffer_infos.as_slice()).build()
+                        write_builder
+                            .buffer_info(&buffer_infos.as_slice()[buffer_infos.len() - 1..])
+                            .build()
                     }
                     DescriptorSetUpdateDetail::Image(image_view) => {
                         self.resources.push(image_view.clone());
@@ -2799,7 +2801,9 @@ impl DescriptorSet {
                                 .image_view(image_view.handle)
                                 .build(),
                         );
-                        write_builder.image_info(image_infos.as_slice()).build()
+                        write_builder
+                            .image_info(&image_infos.as_slice()[image_infos.len() - 1..])
+                            .build()
                     }
                     DescriptorSetUpdateDetail::Sampler(sampler) => {
                         self.resources.push(sampler.clone());
@@ -2808,7 +2812,9 @@ impl DescriptorSet {
                                 .sampler(sampler.handle)
                                 .build(),
                         );
-                        write_builder.image_info(image_infos.as_slice()).build()
+                        write_builder
+                            .image_info(&image_infos.as_slice()[image_infos.len() - 1..])
+                            .build()
                     }
                     DescriptorSetUpdateDetail::AccelerationStructure(tlas) => {
                         self.resources.push(tlas.clone());

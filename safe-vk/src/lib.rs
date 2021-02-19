@@ -353,6 +353,11 @@ impl Device {
                         .scalar_block_layout(true)
                         .build(),
                 )
+                .push_next(
+                    &mut vk::PhysicalDeviceRayQueryFeaturesKHR::builder()
+                        .ray_query(true)
+                        .build(),
+                )
                 .build();
             let handle = pdevice
                 .instance

@@ -221,7 +221,6 @@ impl Camera {
     }
 
     fn process_mouse_movement(&mut self, yaw_offset: f32, pitch_offset: f32) {
-        println!("processing");
         self.yaw += yaw_offset;
         self.pitch = (self.pitch + pitch_offset).clamp(-89.0, 89.0);
         self.update_vectors();

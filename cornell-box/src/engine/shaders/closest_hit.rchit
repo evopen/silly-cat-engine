@@ -3,7 +3,10 @@
 
 layout(location = 0) rayPayloadInEXT vec4 payload;
 
+hitAttributeEXT vec2 attributes;
+
 void main()
 {
-    payload = vec4(0.2, 0.6, 0.0, 1.0);
+    const int primitiveID = gl_PrimitiveID;
+    payload = vec4(primitiveID / 10.0, primitiveID / 100.0, primitiveID / 1000.0, 1.0);
 }

@@ -338,10 +338,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "camera",
  "egui",
  "egui-backend",
  "egui_winit_platform",
  "env_logger",
+ "glam",
  "glob",
  "gltf-wrapper",
  "image",

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use bytemuck::cast_slice;
+use camera::Camera;
 use image::ImageBuffer;
 use safe_vk::{vk, PipelineRecorder};
 use vk::CommandBuffer;
@@ -33,6 +34,9 @@ pub struct Engine {
     pipeline: Arc<safe_vk::RayTracingPipeline>,
     descriptor_set: Arc<safe_vk::DescriptorSet>,
     result_image: Arc<safe_vk::Image>,
+    uniform_buffer: Arc<safe_vk::Buffer>,
+    camera: Camera,
+    scene: gltf_wrapper::Scene,
 }
 
 impl Engine {
@@ -106,6 +110,11 @@ impl Engine {
                     descriptor_type: safe_vk::DescriptorType::AccelerationStructure,
                     stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
                 },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 2,
+                    descriptor_type: safe_vk::DescriptorType::UniformBuffer,
+                    stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
+                },
             ],
         ));
 
@@ -152,6 +161,14 @@ impl Engine {
             "./cornell-box/models/CornellBox.glb",
         );
 
+        let uniform_buffer = Arc::new(safe_vk::Buffer::new(
+            Some("camera buffer"),
+            allocator.clone(),
+            std::mem::size_of::<f32>() * 3,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            safe_vk::MemoryUsage::CpuToGpu,
+        ));
+
         descriptor_set.update(&[
             safe_vk::DescriptorSetUpdateInfo {
                 binding: 0,
@@ -162,6 +179,10 @@ impl Engine {
                 detail: safe_vk::DescriptorSetUpdateDetail::AccelerationStructure(
                     scene.tlas().clone(),
                 ),
+            },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 2,
+                detail: safe_vk::DescriptorSetUpdateDetail::Buffer(uniform_buffer.clone()),
             },
         ]);
 
@@ -203,6 +224,11 @@ impl Engine {
             &mut queue,
         ));
 
+        let camera = camera::Camera::new(
+            glam::Vec3A::new(-0.001, 0.0, 3.0),
+            glam::Vec3A::new(0.0, 0.0, 0.0),
+        );
+
         log::info!("pipeline created");
 
         Self {
@@ -221,6 +247,9 @@ impl Engine {
             pipeline,
             descriptor_set,
             result_image,
+            uniform_buffer,
+            camera,
+            scene,
         }
     }
 
@@ -255,6 +284,7 @@ impl Engine {
 
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
         self.ui_platform.handle_event(event);
+        self.camera.input(event);
     }
 
     pub fn update(&mut self) {
@@ -293,6 +323,10 @@ impl Engine {
         );
         self.ui_pass
             .update_texture(&self.ui_platform.context().texture());
+
+        self.uniform_buffer.copy_from(bytemuck::cast_slice(
+            self.camera.camera_uniform().origin.as_ref(),
+        ));
     }
 
     pub fn render(&mut self) {

@@ -2496,6 +2496,7 @@ pub struct RayTracingPipeline {
     layout: Arc<PipelineLayout>,
     stages: Vec<Arc<ShaderStage>>,
     sbt_buffer: Buffer,
+    sbt_stride: u32,
 }
 
 impl RayTracingPipeline {
@@ -2639,12 +2640,17 @@ impl RayTracingPipeline {
                 layout,
                 stages,
                 sbt_buffer,
+                sbt_stride,
             }
         }
     }
 
     pub fn sbt_buffer(&self) -> &Buffer {
         &self.sbt_buffer
+    }
+
+    pub fn sbt_stride(&self) -> u32 {
+        self.sbt_stride
     }
 }
 

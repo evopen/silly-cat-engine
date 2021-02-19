@@ -9,17 +9,33 @@ use bytemuck::cast_slice;
 use glam::u32;
 use safe_vk::vk;
 
+struct Geometry {
+    index_type: vk::IndexType,
+    index_buffer_offset: u64,
+    index_buffer_address: u64,
+    vertex_format: vk::Format,
+    vertex_buffer_offset: u64,
+    vertex_buffer_address: u64,
+    vertex_stride: u64,
+    triangle_count: u32,
+}
+
+struct Mesh {
+    geometries: Vec<Geometry>,
+    blas: safe_vk::AccelerationStructure,
+}
+
 pub struct Scene {
     doc: gltf::Document,
     buffers: Vec<safe_vk::Buffer>,
     images: Vec<safe_vk::Image>,
-    bottom_level_acceleration_structures: Vec<safe_vk::AccelerationStructure>,
     top_level_acceleration_structure: Arc<safe_vk::AccelerationStructure>,
     instance_buffers: Vec<safe_vk::Buffer>,
     allocator: Arc<safe_vk::Allocator>,
     queue: safe_vk::Queue,
     command_pool: Arc<safe_vk::CommandPool>,
     pointer_buffer: safe_vk::Buffer,
+    meshes: Vec<Mesh>,
 }
 
 impl Scene {
@@ -76,109 +92,112 @@ impl Scene {
 
         let scene = doc.scenes().next().unwrap();
 
-        let bottom_level_acceleration_structures = doc
-            .meshes()
-            .map(|mesh| {
-                let (geometries, triangle_count): (Vec<_>, Vec<_>) = mesh
-                    .primitives()
-                    .map(|primitive| {
-                        let (index_type, index_data) = match primitive.indices() {
-                            Some(accessor) => {
-                                let index_type = match accessor.data_type() {
-                                    gltf::accessor::DataType::U16 => vk::IndexType::UINT16,
-                                    gltf::accessor::DataType::U32 => vk::IndexType::UINT32,
-                                    _ => {
-                                        panic!("not supported");
-                                    }
-                                };
-                                let offset =
-                                    (accessor.offset() + accessor.view().unwrap().offset()) as u64;
-                                let index = accessor.view().unwrap().buffer().index();
-                                accessor.view().unwrap().offset();
-                                (
-                                    index_type,
-                                    vk::DeviceOrHostAddressConstKHR {
-                                        device_address: buffers
-                                            .get(index)
-                                            .unwrap()
-                                            .device_address()
-                                            + offset,
-                                    },
-                                )
-                            }
-                            None => {
-                                (
-                                    vk::IndexType::NONE_KHR,
-                                    vk::DeviceOrHostAddressConstKHR::default(),
-                                )
-                            }
-                        };
+        let mut meshes = Vec::with_capacity(doc.meshes().count());
+        for mesh in doc.meshes() {
+            let mut geometries = Vec::with_capacity(mesh.primitives().count());
+            for primitive in mesh.primitives() {
+                let index_accessor = primitive.indices().expect("unsupported");
+                let index_type = match index_accessor.data_type() {
+                    gltf::accessor::DataType::U16 => vk::IndexType::UINT16,
+                    gltf::accessor::DataType::U32 => vk::IndexType::UINT32,
+                    _ => {
+                        panic!("not supported");
+                    }
+                };
+                let index_buffer_offset =
+                    (index_accessor.offset() + index_accessor.view().unwrap().offset()) as u64;
+                let index_buffer_index = index_accessor.view().unwrap().buffer().index();
+                let index_buffer_address =
+                    buffers.get(index_buffer_index).unwrap().device_address();
+                let index_device_address = vk::DeviceOrHostAddressConstKHR {
+                    device_address: index_buffer_address + index_buffer_offset,
+                };
+                let (_, vertex_accessor) = primitive
+                    .attributes()
+                    .find(|(semantic, _)| semantic.eq(&gltf::Semantic::Positions))
+                    .unwrap();
+                let vertex_format = match vertex_accessor.data_type() {
+                    gltf::accessor::DataType::F32 => vk::Format::R32G32B32_SFLOAT,
+                    _ => {
+                        panic!("fuck");
+                    }
+                };
+                let vertex_buffer_offset =
+                    (vertex_accessor.offset() + vertex_accessor.view().unwrap().offset()) as u64;
+                let vertex_buffer_index = vertex_accessor.view().unwrap().buffer().index();
+                let vertex_buffer_address =
+                    buffers.get(vertex_buffer_index).unwrap().device_address();
+                let vertex_device_address = vk::DeviceOrHostAddressConstKHR {
+                    device_address: vertex_buffer_address + vertex_buffer_offset,
+                };
+                let vertex_stride = match vertex_accessor.dimensions() {
+                    gltf::accessor::Dimensions::Vec3 => std::mem::size_of::<f32>() as u64 * 3,
+                    _ => {
+                        panic!("fuck");
+                    }
+                };
+                let triangle_count = index_accessor.count() as u32 / 3;
 
-                        let (_, accessor) = primitive
-                            .attributes()
-                            .find(|(semantic, _)| semantic.eq(&gltf::Semantic::Positions))
-                            .unwrap();
-                        let vertex_format = match accessor.data_type() {
-                            gltf::accessor::DataType::F32 => vk::Format::R32G32B32_SFLOAT,
-                            _ => {
-                                panic!("fuck");
-                            }
-                        };
-                        let offset = (accessor.offset() + accessor.view().unwrap().offset()) as u64;
-                        let index = accessor.view().unwrap().buffer().index();
-                        let vertex_data = vk::DeviceOrHostAddressConstKHR {
-                            device_address: buffers.get(index).unwrap().device_address() + offset,
-                        };
-                        let vertex_stride = match accessor.dimensions() {
-                            gltf::accessor::Dimensions::Vec3 => {
-                                std::mem::size_of::<f32>() as u64 * 3
-                            }
-                            _ => {
-                                panic!("fuck");
-                            }
-                        };
-
-                        (
-                            vk::AccelerationStructureGeometryKHR::builder()
-                                .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-                                .flags(
-                                    vk::GeometryFlagsKHR::OPAQUE
-                                        | vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION,
-                                )
-                                .geometry(vk::AccelerationStructureGeometryDataKHR {
-                                    triangles:
-                                        vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-                                            .index_type(index_type)
-                                            .index_data(index_data)
-                                            .vertex_data(vertex_data)
-                                            .vertex_format(vertex_format)
-                                            .vertex_stride(vertex_stride)
-                                            .max_vertex(std::u32::MAX)
-                                            .build(),
-                                })
-                                .build(),
-                            (primitive.indices().unwrap().count() / 3) as u32,
-                        )
+                geometries.push(Geometry {
+                    index_type,
+                    index_buffer_offset,
+                    index_buffer_address,
+                    vertex_format,
+                    vertex_buffer_offset,
+                    vertex_buffer_address,
+                    vertex_stride,
+                    triangle_count,
+                });
+            }
+            let blas = safe_vk::AccelerationStructure::new(
+                Some("bottom level - mesh"),
+                allocator.clone(),
+                geometries
+                    .iter()
+                    .map(|geometry| {
+                        vk::AccelerationStructureGeometryKHR::builder()
+                            .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+                            .flags(
+                                vk::GeometryFlagsKHR::OPAQUE
+                                    | vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION,
+                            )
+                            .geometry(vk::AccelerationStructureGeometryDataKHR {
+                                triangles:
+                                    vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+                                        .index_type(geometry.index_type)
+                                        .index_data(vk::DeviceOrHostAddressConstKHR {
+                                            device_address: buffers[0].device_address()
+                                                + geometry.index_buffer_offset,
+                                        })
+                                        .vertex_data(vk::DeviceOrHostAddressConstKHR {
+                                            device_address: buffers[0].device_address()
+                                                + geometry.vertex_buffer_offset,
+                                        })
+                                        .vertex_format(geometry.vertex_format)
+                                        .vertex_stride(geometry.vertex_stride)
+                                        .max_vertex(std::u32::MAX)
+                                        .build(),
+                            })
+                            .build()
                     })
                     .collect::<Vec<_>>()
-                    .into_iter()
-                    .unzip();
-                safe_vk::AccelerationStructure::new(
-                    Some("bottom level - mesh"),
-                    allocator.clone(),
-                    geometries.as_ref(),
-                    triangle_count.as_ref(),
-                    vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-                )
-            })
-            .collect::<Vec<_>>();
+                    .as_slice(),
+                geometries
+                    .iter()
+                    .map(|geometry| geometry.triangle_count)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            );
+            meshes.push(Mesh { geometries, blas });
+        }
 
         let instance_buffers: Vec<safe_vk::Buffer> = scene
             .nodes()
             .map(|node| {
                 Self::process_node(
                     node,
-                    bottom_level_acceleration_structures.as_slice(),
+                    meshes.as_slice(),
                     allocator.clone(),
                     &mut queue,
                     command_pool.clone(),
@@ -228,19 +247,19 @@ impl Scene {
             doc,
             buffers,
             images,
-            bottom_level_acceleration_structures,
             instance_buffers,
             allocator,
             queue,
             command_pool,
             top_level_acceleration_structure,
             pointer_buffer,
+            meshes,
         }
     }
 
     fn process_node(
         node: gltf::Node,
-        bottoms: &[safe_vk::AccelerationStructure],
+        meshes: &[Mesh],
         allocator: Arc<safe_vk::Allocator>,
         queue: &mut safe_vk::Queue,
         command_pool: Arc<safe_vk::CommandPool>,
@@ -250,13 +269,7 @@ impl Scene {
         let mut arr = node
             .children()
             .map(|node| {
-                Self::process_node(
-                    node,
-                    bottoms,
-                    allocator.clone(),
-                    queue,
-                    command_pool.clone(),
-                )
+                Self::process_node(node, meshes, allocator.clone(), queue, command_pool.clone())
             })
             .flatten()
             .collect::<Vec<_>>();
@@ -269,7 +282,7 @@ impl Scene {
                 instance_custom_index_and_mask: 0 | (0xFF << 24),
                 instance_shader_binding_table_record_offset_and_flags: 0 | (0x01 << 24),
                 acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                    device_handle: bottoms[mesh.index()].device_address(),
+                    device_handle: meshes[mesh.index()].blas.device_address(),
                 },
             };
 

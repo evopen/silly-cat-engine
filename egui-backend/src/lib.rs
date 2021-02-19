@@ -241,7 +241,10 @@ impl UiPass {
         uniform_descriptor_set.update(&[
             safe_vk::DescriptorSetUpdateInfo {
                 binding: 0,
-                detail: safe_vk::DescriptorSetUpdateDetail::Buffer(uniform_buffer.clone()),
+                detail: safe_vk::DescriptorSetUpdateDetail::Buffer {
+                    buffer: uniform_buffer.clone(),
+                    offset: 0,
+                },
             },
             safe_vk::DescriptorSetUpdateInfo {
                 binding: 1,

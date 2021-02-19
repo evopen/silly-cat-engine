@@ -2756,38 +2756,7 @@ impl DescriptorSet {
         let descriptor_writes = update_infos
             .iter()
             .map(|info| {
-                let mut buffer_infos = Vec::new();
-                let mut image_infos = Vec::new();
-                match info.detail.borrow() {
-                    DescriptorSetUpdateDetail::Buffer(buffer) => {
-                        self.resources.push(buffer.clone());
-                        buffer_infos.push(
-                            vk::DescriptorBufferInfo::builder()
-                                .buffer(buffer.handle)
-                                .offset(0)
-                                .range(vk::WHOLE_SIZE)
-                                .build(),
-                        )
-                    }
-                    DescriptorSetUpdateDetail::Image(image_view) => {
-                        self.resources.push(image_view.clone());
-                        image_infos.push(
-                            vk::DescriptorImageInfo::builder()
-                                .image_layout(image_view.image.layout())
-                                .image_view(image_view.handle)
-                                .build(),
-                        );
-                    }
-                    DescriptorSetUpdateDetail::Sampler(sampler) => {
-                        self.resources.push(sampler.clone());
-                        image_infos.push(
-                            vk::DescriptorImageInfo::builder()
-                                .sampler(sampler.handle)
-                                .build(),
-                        );
-                    }
-                };
-                let mut write = vk::WriteDescriptorSet::builder()
+                let write_builder = vk::WriteDescriptorSet::builder()
                     .dst_set(self.handle)
                     .dst_binding(info.binding)
                     .descriptor_type(
@@ -2797,10 +2766,53 @@ impl DescriptorSet {
                             .map(|binding| binding.descriptor_type)
                             .next()
                             .unwrap(),
-                    )
-                    .image_info(image_infos.as_slice())
-                    .buffer_info(buffer_infos.as_slice())
-                    .build();
+                    );
+                let mut write = match info.detail.borrow() {
+                    DescriptorSetUpdateDetail::Buffer(buffer) => {
+                        self.resources.push(buffer.clone());
+                        let mut buffer_infos = vec![];
+                        buffer_infos.push(
+                            vk::DescriptorBufferInfo::builder()
+                                .buffer(buffer.handle)
+                                .offset(0)
+                                .range(vk::WHOLE_SIZE)
+                                .build(),
+                        );
+                        write_builder.buffer_info(buffer_infos.as_slice()).build()
+                    }
+                    DescriptorSetUpdateDetail::Image(image_view) => {
+                        self.resources.push(image_view.clone());
+                        let mut image_infos = vec![];
+                        image_infos.push(
+                            vk::DescriptorImageInfo::builder()
+                                .image_layout(image_view.image.layout())
+                                .image_view(image_view.handle)
+                                .build(),
+                        );
+                        write_builder.image_info(image_infos.as_slice()).build()
+                    }
+                    DescriptorSetUpdateDetail::Sampler(sampler) => {
+                        self.resources.push(sampler.clone());
+                        let mut image_infos = vec![];
+                        image_infos.push(
+                            vk::DescriptorImageInfo::builder()
+                                .sampler(sampler.handle)
+                                .build(),
+                        );
+                        write_builder.image_info(image_infos.as_slice()).build()
+                    }
+                    DescriptorSetUpdateDetail::AccelerationStructure(tlas) => {
+                        self.resources.push(tlas.clone());
+                        write_builder
+                            .push_next(
+                                &mut vk::WriteDescriptorSetAccelerationStructureKHR::builder()
+                                    .acceleration_structures(&[tlas.handle])
+                                    .build(),
+                            )
+                            .build()
+                    }
+                };
+
                 write.descriptor_count = 1;
                 write
             })
@@ -2818,6 +2830,7 @@ pub enum DescriptorSetUpdateDetail {
     Buffer(Arc<Buffer>),
     Image(Arc<ImageView>),
     Sampler(Arc<Sampler>),
+    AccelerationStructure(Arc<AccelerationStructure>),
 }
 
 pub struct DescriptorSetUpdateInfo {

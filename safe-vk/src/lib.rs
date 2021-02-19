@@ -2597,6 +2597,7 @@ impl RayTracingPipeline {
                     rt_p.shader_group_handle_size as usize * group_create_infos.len(),
                 )
                 .unwrap();
+            dbg!(&shader_handle_storage.len());
             assert!(rt_p.shader_group_base_alignment % rt_p.shader_group_handle_alignment == 0);
             let sbt_stride = rt_p.shader_group_base_alignment
                 * ((rt_p.shader_group_handle_size + rt_p.shader_group_base_alignment - 1)
@@ -2605,21 +2606,14 @@ impl RayTracingPipeline {
             assert!(sbt_stride == 64);
 
             let sbt_size = sbt_stride * group_create_infos.len() as u32;
-            let sbt_buffer = Buffer::new(
-                Some("sbt buffer"),
-                allocator.clone(),
-                sbt_size,
-                vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                MemoryUsage::GpuOnly,
-            );
+
             let mut temp: Vec<u8> = vec![0; sbt_size as usize];
             for group_index in 0..group_create_infos.len() {
                 std::ptr::copy_nonoverlapping(
                     shader_handle_storage
                         .as_ptr()
-                        .add(group_index * sbt_stride as usize),
-                    temp.as_mut_ptr(),
+                        .add(group_index * rt_p.shader_group_handle_size as usize),
+                    temp.as_mut_ptr().add(group_index * sbt_stride as usize),
                     rt_p.shader_group_handle_size as usize,
                 );
             }

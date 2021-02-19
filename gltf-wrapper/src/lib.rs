@@ -28,7 +28,7 @@ struct Mesh {
 pub struct Scene {
     doc: gltf::Document,
     buffers: Vec<Arc<safe_vk::Buffer>>,
-    images: Vec<safe_vk::Image>,
+    // images: Vec<safe_vk::Image>,
     top_level_acceleration_structure: Arc<safe_vk::AccelerationStructure>,
     instance_buffers: Vec<safe_vk::Buffer>,
     allocator: Arc<safe_vk::Allocator>,
@@ -58,36 +58,36 @@ impl Scene {
             })
             .collect::<Vec<_>>();
 
-        let images = gltf_images
-            .iter()
-            .map(|image| {
-                let format = match image.format {
-                    gltf::image::Format::R8 => vk::Format::R8_UNORM,
-                    gltf::image::Format::R8G8 => vk::Format::R8G8_UNORM,
-                    gltf::image::Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
-                    gltf::image::Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
-                    gltf::image::Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
-                    gltf::image::Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
-                    _ => {
-                        unimplemented!()
-                    }
-                };
+        // let images = gltf_images
+        //     .iter()
+        //     .map(|image| {
+        //         let format = match image.format {
+        //             gltf::image::Format::R8 => vk::Format::R8_UNORM,
+        //             gltf::image::Format::R8G8 => vk::Format::R8G8_UNORM,
+        //             gltf::image::Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
+        //             gltf::image::Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
+        //             gltf::image::Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
+        //             gltf::image::Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
+        //             _ => {
+        //                 unimplemented!()
+        //             }
+        //         };
 
-                safe_vk::Image::new_init_host(
-                    Some("gltf texture"),
-                    allocator.clone(),
-                    format,
-                    image.width,
-                    image.height,
-                    vk::ImageTiling::OPTIMAL,
-                    vk::ImageUsageFlags::SAMPLED,
-                    safe_vk::MemoryUsage::CpuToGpu,
-                    &mut queue,
-                    command_pool.clone(),
-                    &image.pixels,
-                )
-            })
-            .collect::<Vec<_>>();
+        //         safe_vk::Image::new_init_host(
+        //             Some("gltf texture"),
+        //             allocator.clone(),
+        //             format,
+        //             image.width,
+        //             image.height,
+        //             vk::ImageTiling::OPTIMAL,
+        //             vk::ImageUsageFlags::SAMPLED,
+        //             safe_vk::MemoryUsage::CpuToGpu,
+        //             &mut queue,
+        //             command_pool.clone(),
+        //             &image.pixels,
+        //         )
+        //     })
+        //     .collect::<Vec<_>>();
 
         assert_eq!(doc.scenes().len(), 1);
 
@@ -247,7 +247,7 @@ impl Scene {
         Self {
             doc,
             buffers,
-            images,
+            // images,
             instance_buffers,
             allocator,
             queue,

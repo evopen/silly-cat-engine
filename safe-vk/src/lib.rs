@@ -2756,6 +2756,7 @@ impl DescriptorSet {
         let mut buffer_infos = Vec::new();
         let mut image_infos = Vec::new();
         let mut tlas_handles = Vec::new();
+        let mut write_acceleration_structure = None;
 
         let descriptor_writes = update_infos
             .iter()
@@ -2806,12 +2807,13 @@ impl DescriptorSet {
                     DescriptorSetUpdateDetail::AccelerationStructure(tlas) => {
                         self.resources.push(tlas.clone());
                         tlas_handles.push(tlas.handle);
+                        write_acceleration_structure = Some(
+                            vk::WriteDescriptorSetAccelerationStructureKHR::builder()
+                                .acceleration_structures(tlas_handles.as_slice())
+                                .build(),
+                        );
                         write_builder
-                            .push_next(
-                                &mut vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                                    .acceleration_structures(tlas_handles.as_slice())
-                                    .build(),
-                            )
+                            .push_next(write_acceleration_structure.as_mut().unwrap())
                             .build()
                     }
                 };

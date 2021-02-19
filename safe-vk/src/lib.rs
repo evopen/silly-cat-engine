@@ -2882,14 +2882,14 @@ impl Drop for Sampler {
 }
 
 pub struct ShaderStage {
-    module: ShaderModule,
+    module: Arc<ShaderModule>,
     stage: vk::ShaderStageFlags,
     entry_point: String,
     entry_point_cstr: CString,
 }
 
 impl ShaderStage {
-    pub fn new(module: ShaderModule, stage: vk::ShaderStageFlags, entry_point: &str) -> Self {
+    pub fn new(module: Arc<ShaderModule>, stage: vk::ShaderStageFlags, entry_point: &str) -> Self {
         let entry_point_cstr = CString::new(entry_point).unwrap();
         Self {
             module,

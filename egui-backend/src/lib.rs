@@ -153,12 +153,12 @@ impl UiPass {
             pipeline_layout,
             vec![
                 Arc::new(safe_vk::ShaderStage::new(
-                    vs_module,
+                    Arc::new(vs_module),
                     vk::ShaderStageFlags::VERTEX,
                     "main",
                 )),
                 Arc::new(safe_vk::ShaderStage::new(
-                    fs_module,
+                    Arc::new(fs_module),
                     vk::ShaderStageFlags::FRAGMENT,
                     "main",
                 )),

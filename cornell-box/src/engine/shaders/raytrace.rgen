@@ -6,6 +6,8 @@
 layout(binding = 0, set = 0, rgba32f) uniform image2D storage_image;
 layout(binding = 1, set = 0) uniform accelerationStructureEXT tlas;
 
+layout(location = 0) rayPayloadEXT vec3 payload;
+
 void main()
 {
     const vec2 resolution = imageSize(storage_image);
@@ -22,9 +24,16 @@ void main()
     // Define the field of view by the vertical slope of the topmost rays:
     const float fovVerticalSlope = 1.0 / 5.0;
 
-    vec4 color = vec4(pixel.x / float(resolution.x), //
-        pixel.y / float(resolution.y), //
-        0.0, //
-        0.0);
-    imageStore(storage_image, pixel, color);
+    const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+    const vec2 uv = pixel_center / vec2(gl_LaunchSizeEXT.xy);
+    vec2 d = uv * 2.0 - 1.0;
+
+    float tmin = 0.001;
+    float tmax = 10000.0;
+
+    const vec3 dir = vec3(d.x, d.y, -0.5);
+
+    traceRayEXT(tlas, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, cameraOrigin, tmin, dir, tmax, 0);
+
+    imageStore(storage_image, pixel, vec4(payload, 1.0));
 }

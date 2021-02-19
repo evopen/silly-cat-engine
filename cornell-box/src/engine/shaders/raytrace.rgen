@@ -38,7 +38,7 @@ void main()
     float tmin = 0.001;
     float tmax = 10000.0;
 
-    const vec3 ray_dir = vec3(d.x, d.y, -0.5);
+    const vec3 ray_dir = vec3(d.x, -d.y, -0.5);
 
     traceRayEXT(tlas, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, camera.origin, tmin, ray_dir, tmax, 0);
 

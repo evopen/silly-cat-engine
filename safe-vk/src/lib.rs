@@ -469,6 +469,7 @@ pub struct Buffer {
     device_address: vk::DeviceAddress,
     size: usize,
     allocation_info: vk_mem::AllocationInfo,
+    property_flags: vk::MemoryPropertyFlags,
 }
 
 impl std::fmt::Debug for Buffer {
@@ -533,6 +534,11 @@ impl Buffer {
                     .build(),
             );
 
+            let property_flags = allocator
+                .handle
+                .get_memory_type_properties(allocation_info.get_memory_type())
+                .unwrap();
+
             Self {
                 handle,
                 allocation,
@@ -541,6 +547,7 @@ impl Buffer {
                 size: size.to_usize().unwrap(),
                 allocator,
                 allocation_info,
+                property_flags,
             }
         }
     }
@@ -622,6 +629,11 @@ impl Buffer {
     }
 
     pub fn map(&self) -> *mut u8 {
+        if !self.is_mappable() {
+            panic!("memory is not host visible");
+        }
+
+        let ptr = self.allocator.handle.map_memory(&self.allocation).unwrap();
         self.mapped
             .compare_exchange(
                 false,
@@ -630,7 +642,7 @@ impl Buffer {
                 std::sync::atomic::Ordering::SeqCst,
             )
             .expect("already mapped");
-        self.allocator.handle.map_memory(&self.allocation).unwrap()
+        ptr
     }
 
     pub fn unmap(&self) {
@@ -655,10 +667,10 @@ impl Buffer {
 
     pub fn copy_from<I: AsRef<[u8]>>(&self, data: I) {
         let data = data.as_ref();
-        let mapped = self.allocator.handle.map_memory(&self.allocation).unwrap();
+        let mapped = self.map();
         let mapped_bytes = unsafe { std::slice::from_raw_parts_mut(mapped, self.size) };
         mapped_bytes.copy_from_slice(data);
-        self.allocator.handle.unmap_memory(&self.allocation);
+        self.unmap();
     }
 
     pub fn size(&self) -> usize {
@@ -666,11 +678,13 @@ impl Buffer {
     }
 
     pub fn is_device_local(&self) -> bool {
-        self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::DEVICE_LOCAL.as_raw() != 0
+        self.property_flags & vk::MemoryPropertyFlags::DEVICE_LOCAL
+            != vk::MemoryPropertyFlags::empty()
     }
 
     pub fn is_mappable(&self) -> bool {
-        self.allocation_info.get_memory_type() & vk::MemoryPropertyFlags::HOST_VISIBLE.as_raw() != 0
+        self.property_flags & vk::MemoryPropertyFlags::HOST_VISIBLE
+            != vk::MemoryPropertyFlags::empty()
     }
 
     pub fn flush(&self) {

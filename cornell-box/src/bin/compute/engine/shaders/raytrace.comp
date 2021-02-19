@@ -14,6 +14,18 @@ const uvec2 RESOLUTION = uvec2(800, 600);
 const vec3 camera_origin = vec3(-0.001, 1.0, 6.0);
 vec3 ray_origin = camera_origin;
 
+vec3 ACESToneMapping(vec3 color, float adapted_lum)
+{
+    const float A = 2.51f;
+    const float B = 0.03f;
+    const float C = 2.43f;
+    const float D = 0.59f;
+    const float E = 0.14f;
+
+    color *= adapted_lum;
+    return (color * (A * color + B)) / (color * (C * color + D) + E);
+}
+
 void main()
 {
     const uvec2 pixel = gl_GlobalInvocationID.xy;
@@ -42,17 +54,22 @@ void main()
     while (rayQueryProceedEXT(rayQuery)) {
     }
 
+    vec3 pixelColor;
+
+    if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT) {
+        const int primitive_id = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+        pixelColor = vec3(0.0, rayQueryGetIntersectionBarycentricsEXT(rayQuery, true));
+        pixelColor.x = 1 - pixelColor.y - pixelColor.z;
+    } else {
+        // Ray hit the sky
+        pixelColor = vec3(0.0, 0.0, 0.5);
+    }
+
     const float t = rayQueryGetIntersectionTEXT(rayQuery, true);
 
-    const vec3 pixel_color = vec3(float(pixel.x) / RESOLUTION.x, // Red
-        float(pixel.y) / RESOLUTION.y, // Green
-        0.0);
+    pixelColor = ACESToneMapping(pixelColor, 1);
 
-    // Get the index of this invocation in the buffer:
-    uint linearIndex = RESOLUTION.x * pixel.y + pixel.x;
-    // Write the color to the buffer.
+    imageStore(storage_image, ivec2(pixel), vec4(pixelColor, 1.0));
 
-    imageStore(storage_image, ivec2(pixel), vec4(vec3(t / 10), 1.0));
-
-    debugPrintfEXT("Color %v3f\n", pixel_color);
+    debugPrintfEXT("Color %v3f\n", pixelColor);
 }

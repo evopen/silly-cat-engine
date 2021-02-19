@@ -166,6 +166,10 @@ impl Engine {
             allocator.clone(),
             "./cornell-box/models/CornellBox.glb",
         );
+        // let scene = gltf_wrapper::Scene::from_file(
+        //     allocator.clone(),
+        //     "./models/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb",
+        // );
 
         let uniform_buffer = Arc::new(safe_vk::Buffer::new(
             Some("camera buffer"),

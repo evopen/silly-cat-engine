@@ -2,6 +2,7 @@
 #extension GL_EXT_debug_printf : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_ray_query : require
+#extension GL_EXT_shader_16bit_storage : require
 
 layout(local_size_x = 16, local_size_y = 8, local_size_z = 1) in;
 
@@ -9,13 +10,13 @@ layout(binding = 0, set = 0, rgba32f) uniform image2D storage_image;
 
 layout(binding = 1, set = 0) uniform accelerationStructureEXT tlas;
 
-layout(binding = 2, set = 0, scalar) buffer Vertices
+layout(binding = 2, set = 0, scalar) buffer Indices
+{
+    uint16_t indices[];
+};
+layout(binding = 3, set = 0, scalar) buffer Vertices
 {
     vec3 vertices[];
-};
-layout(binding = 3, set = 0, scalar) buffer Indices
-{
-    uint indices[];
 };
 
 const uvec2 RESOLUTION = uvec2(800, 600);
@@ -66,9 +67,15 @@ void main()
     vec3 pixelColor;
 
     if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT) {
-        const int primitive_id = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
-        pixelColor = vec3(0.0, rayQueryGetIntersectionBarycentricsEXT(rayQuery, true));
-        pixelColor.x = 1 - pixelColor.y - pixelColor.z;
+        const int primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+        const uint i0 = uint(indices[3 * primitiveID]);
+        const vec3 v0 = vertices[i0];
+        debugPrintfEXT("primitive id %d\n", primitiveID);
+
+        pixelColor = vec3(0.5) + 0.25 * v0;
+
+        // pixelColor = vec3(primitiveID / 10.0, primitiveID / 100.0, primitiveID / 1000.0);
+
     } else {
         // Ray hit the sky
         pixelColor = vec3(0.0, 0.0, 0.5);
@@ -80,5 +87,5 @@ void main()
 
     imageStore(storage_image, ivec2(pixel), vec4(pixelColor, 1.0));
 
-    debugPrintfEXT("Color %v3f\n", pixelColor);
+    // debugPrintfEXT("Color %v3f\n", pixelColor);
 }

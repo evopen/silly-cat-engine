@@ -14,7 +14,7 @@ pub struct Scene {
     buffers: Vec<safe_vk::Buffer>,
     images: Vec<safe_vk::Image>,
     bottom_level_acceleration_structures: Vec<safe_vk::AccelerationStructure>,
-    top_level_acceleration_structure: safe_vk::AccelerationStructure,
+    top_level_acceleration_structure: Arc<safe_vk::AccelerationStructure>,
     instance_buffers: Vec<safe_vk::Buffer>,
     allocator: Arc<safe_vk::Allocator>,
     queue: safe_vk::Queue,
@@ -213,13 +213,13 @@ impl Scene {
             })
             .build();
 
-        let top_level_acceleration_structure = safe_vk::AccelerationStructure::new(
+        let top_level_acceleration_structure = Arc::new(safe_vk::AccelerationStructure::new(
             Some("top level - mesh"),
             allocator.clone(),
             &[instance_geometry],
             &[instance_buffer_addresses.len() as u32],
             vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-        );
+        ));
 
         Self {
             doc,
@@ -291,6 +291,10 @@ impl Scene {
             arr.push(instance_buffer);
         }
         arr
+    }
+
+    pub fn tlas(&self) -> &Arc<safe_vk::AccelerationStructure> {
+        &self.top_level_acceleration_structure
     }
 }
 

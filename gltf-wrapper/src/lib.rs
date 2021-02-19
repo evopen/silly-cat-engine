@@ -141,7 +141,10 @@ impl Scene {
                         (
                             vk::AccelerationStructureGeometryKHR::builder()
                                 .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-                                .flags(vk::GeometryFlagsKHR::OPAQUE)
+                                .flags(
+                                    vk::GeometryFlagsKHR::OPAQUE
+                                        | vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION,
+                                )
                                 .geometry(vk::AccelerationStructureGeometryDataKHR {
                                     triangles:
                                         vk::AccelerationStructureGeometryTrianglesDataKHR::builder()

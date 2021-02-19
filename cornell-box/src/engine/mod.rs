@@ -172,17 +172,17 @@ impl Engine {
             shaders::Shaders::get("raytrace.rgen.spv").unwrap(),
         );
 
-        let shader_stage = Arc::new(safe_vk::ShaderStage::new(
-            shader_module,
+        let shader_stages = vec![Arc::new(safe_vk::ShaderStage::new(
+            Arc::new(shader_module),
             vk::ShaderStageFlags::RAYGEN_KHR,
             "main",
-        ));
+        ))];
 
         let pipeline = Arc::new(safe_vk::RayTracingPipeline::new(
             Some("rt pipeline"),
             allocator.clone(),
             pipeline_layout,
-            vec![shader_stage],
+            shader_stages,
             4,
             &mut queue,
         ));

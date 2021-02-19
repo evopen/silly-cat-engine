@@ -2778,12 +2778,12 @@ impl DescriptorSet {
                             .unwrap(),
                     );
                 let mut write = match info.detail.borrow() {
-                    DescriptorSetUpdateDetail::Buffer(buffer) => {
+                    DescriptorSetUpdateDetail::Buffer { buffer, offset } => {
                         self.resources.push(buffer.clone());
                         buffer_infos.push(
                             vk::DescriptorBufferInfo::builder()
                                 .buffer(buffer.handle)
-                                .offset(0)
+                                .offset(*offset)
                                 .range(vk::WHOLE_SIZE)
                                 .build(),
                         );
@@ -2837,7 +2837,7 @@ impl DescriptorSet {
 }
 
 pub enum DescriptorSetUpdateDetail {
-    Buffer(Arc<Buffer>),
+    Buffer { buffer: Arc<Buffer>, offset: u64 },
     Image(Arc<ImageView>),
     Sampler(Arc<Sampler>),
     AccelerationStructure(Arc<AccelerationStructure>),

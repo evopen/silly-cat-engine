@@ -167,25 +167,43 @@ impl Engine {
 
         let descriptor_set = Arc::new(descriptor_set);
 
-        let shader_module = safe_vk::ShaderModule::new(
-            device.clone(),
-            shaders::Shaders::get("raytrace.rgen.spv").unwrap(),
-        );
-
-        let shader_stages = vec![Arc::new(safe_vk::ShaderStage::new(
-            Arc::new(shader_module),
-            vk::ShaderStageFlags::RAYGEN_KHR,
-            "main",
-        ))];
+        let shader_stages = vec![
+            Arc::new(safe_vk::ShaderStage::new(
+                Arc::new(safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("raytrace.rgen.spv").unwrap(),
+                )),
+                vk::ShaderStageFlags::RAYGEN_KHR,
+                "main",
+            )),
+            Arc::new(safe_vk::ShaderStage::new(
+                Arc::new(safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("miss.rmiss.spv").unwrap(),
+                )),
+                vk::ShaderStageFlags::MISS_KHR,
+                "main",
+            )),
+            Arc::new(safe_vk::ShaderStage::new(
+                Arc::new(safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("closest_hit.rchit.spv").unwrap(),
+                )),
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                "main",
+            )),
+        ];
 
         let pipeline = Arc::new(safe_vk::RayTracingPipeline::new(
             Some("rt pipeline"),
             allocator.clone(),
             pipeline_layout,
             shader_stages,
-            4,
+            1,
             &mut queue,
         ));
+
+        log::info!("pipeline created");
 
         Self {
             ui_platform,
@@ -283,15 +301,20 @@ impl Engine {
 
         let target_image = self.swapchain_images[index as usize].clone();
 
+        let start_address = self.pipeline.sbt_buffer().device_address();
+        let stride = self.pipeline.sbt_stride() as u64;
         let sbt_ray_gen_region = vk::StridedDeviceAddressRegionKHR::builder()
-            .device_address(self.pipeline.sbt_buffer().device_address())
-            .stride(64)
-            .size(64)
+            .device_address(start_address)
+            .stride(stride)
+            .size(stride)
             .build();
         let mut sbt_hit_region = sbt_ray_gen_region;
-        sbt_hit_region.size = 0;
+        sbt_hit_region.size = stride;
+        sbt_hit_region.device_address = start_address + 2 * stride;
         let mut sbt_miss_region = sbt_ray_gen_region;
-        sbt_miss_region.size = 0;
+        sbt_miss_region.size = stride;
+        sbt_miss_region.device_address = start_address + stride;
+
         let mut sbt_callable_region = sbt_ray_gen_region;
         sbt_callable_region.size = 0;
 

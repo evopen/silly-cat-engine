@@ -27,7 +27,7 @@ struct Mesh {
 
 pub struct Scene {
     doc: gltf::Document,
-    buffers: Vec<safe_vk::Buffer>,
+    buffers: Vec<Arc<safe_vk::Buffer>>,
     images: Vec<safe_vk::Image>,
     top_level_acceleration_structure: Arc<safe_vk::AccelerationStructure>,
     instance_buffers: Vec<safe_vk::Buffer>,
@@ -47,13 +47,14 @@ impl Scene {
         let buffers = gltf_buffers
             .iter()
             .map(|data| {
-                safe_vk::Buffer::new_init_host(
+                Arc::new(safe_vk::Buffer::new_init_host(
                     Some("gltf buffer"),
                     allocator.clone(),
-                    vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+                    vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                        | vk::BufferUsageFlags::STORAGE_BUFFER,
                     safe_vk::MemoryUsage::CpuToGpu,
                     data.as_ref(),
-                )
+                ))
             })
             .collect::<Vec<_>>();
 
@@ -311,6 +312,22 @@ impl Scene {
 
     pub fn tlas(&self) -> &Arc<safe_vk::AccelerationStructure> {
         &self.top_level_acceleration_structure
+    }
+
+    pub fn sole_buffer(&self) -> &Arc<safe_vk::Buffer> {
+        assert_eq!(self.buffers.len(), 1);
+        &self.buffers[0]
+    }
+
+    pub fn sole_geometry_index_buffer_offset(&self) -> u64 {
+        assert_eq!(self.meshes.len(), 1);
+        assert_eq!(self.meshes[0].geometries.len(), 1);
+        self.meshes[0].geometries[0].index_buffer_offset
+    }
+    pub fn sole_geometry_vertex_buffer_offset(&self) -> u64 {
+        assert_eq!(self.meshes.len(), 1);
+        assert_eq!(self.meshes[0].geometries.len(), 1);
+        self.meshes[0].geometries[0].vertex_buffer_offset
     }
 }
 

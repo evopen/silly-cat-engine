@@ -9,6 +9,15 @@ layout(binding = 0, set = 0, rgba32f) uniform image2D storage_image;
 
 layout(binding = 1, set = 0) uniform accelerationStructureEXT tlas;
 
+layout(binding = 2, set = 0, scalar) buffer Vertices
+{
+    vec3 vertices[];
+};
+layout(binding = 3, set = 0, scalar) buffer Indices
+{
+    uint indices[];
+};
+
 const uvec2 RESOLUTION = uvec2(800, 600);
 
 const vec3 camera_origin = vec3(-0.001, 1.0, 6.0);

@@ -111,6 +111,16 @@ impl Engine {
                     descriptor_type: safe_vk::DescriptorType::AccelerationStructure,
                     stage_flags: vk::ShaderStageFlags::COMPUTE,
                 },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 2,
+                    descriptor_type: safe_vk::DescriptorType::StorageBuffer,
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 3,
+                    descriptor_type: safe_vk::DescriptorType::StorageBuffer,
+                    stage_flags: vk::ShaderStageFlags::COMPUTE,
+                },
             ],
         ));
 
@@ -175,6 +185,20 @@ impl Engine {
                 detail: safe_vk::DescriptorSetUpdateDetail::AccelerationStructure(
                     scene.tlas().clone(),
                 ),
+            },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 2,
+                detail: safe_vk::DescriptorSetUpdateDetail::Buffer {
+                    buffer: scene.sole_buffer().clone(),
+                    offset: scene.sole_geometry_index_buffer_offset(),
+                },
+            },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 3,
+                detail: safe_vk::DescriptorSetUpdateDetail::Buffer {
+                    buffer: scene.sole_buffer().clone(),
+                    offset: scene.sole_geometry_vertex_buffer_offset(),
+                },
             },
         ]);
 

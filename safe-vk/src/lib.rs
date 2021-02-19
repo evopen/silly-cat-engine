@@ -2753,6 +2753,10 @@ impl DescriptorSet {
         let device = self.descriptor_pool.device.clone();
         let bindings = self.descriptor_set_layout.vk_bindings.clone();
 
+        let mut buffer_infos = Vec::new();
+        let mut image_infos = Vec::new();
+        let mut tlas_handles = Vec::new();
+
         let descriptor_writes = update_infos
             .iter()
             .map(|info| {
@@ -2770,7 +2774,6 @@ impl DescriptorSet {
                 let mut write = match info.detail.borrow() {
                     DescriptorSetUpdateDetail::Buffer(buffer) => {
                         self.resources.push(buffer.clone());
-                        let mut buffer_infos = vec![];
                         buffer_infos.push(
                             vk::DescriptorBufferInfo::builder()
                                 .buffer(buffer.handle)
@@ -2778,11 +2781,11 @@ impl DescriptorSet {
                                 .range(vk::WHOLE_SIZE)
                                 .build(),
                         );
+
                         write_builder.buffer_info(buffer_infos.as_slice()).build()
                     }
                     DescriptorSetUpdateDetail::Image(image_view) => {
                         self.resources.push(image_view.clone());
-                        let mut image_infos = vec![];
                         image_infos.push(
                             vk::DescriptorImageInfo::builder()
                                 .image_layout(image_view.image.layout())
@@ -2793,7 +2796,6 @@ impl DescriptorSet {
                     }
                     DescriptorSetUpdateDetail::Sampler(sampler) => {
                         self.resources.push(sampler.clone());
-                        let mut image_infos = vec![];
                         image_infos.push(
                             vk::DescriptorImageInfo::builder()
                                 .sampler(sampler.handle)
@@ -2803,10 +2805,11 @@ impl DescriptorSet {
                     }
                     DescriptorSetUpdateDetail::AccelerationStructure(tlas) => {
                         self.resources.push(tlas.clone());
+                        tlas_handles.push(tlas.handle);
                         write_builder
                             .push_next(
                                 &mut vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                                    .acceleration_structures(&[tlas.handle])
+                                    .acceleration_structures(tlas_handles.as_slice())
                                     .build(),
                             )
                             .build()

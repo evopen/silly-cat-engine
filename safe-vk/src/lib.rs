@@ -377,6 +377,16 @@ impl Device {
                 vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
                     .buffer_device_address(true)
                     .build();
+            let mut fea_16_bit_storage_pnext = vk::PhysicalDevice16BitStorageFeatures::builder()
+                .uniform_and_storage_buffer16_bit_access(true)
+                .storage_buffer16_bit_access(true)
+                .storage_input_output16(false)
+                .storage_push_constant16(true)
+                .build();
+            let mut scalar_block_layout_pnext =
+                vk::PhysicalDeviceScalarBlockLayoutFeatures::builder()
+                    .scalar_block_layout(true)
+                    .build();
 
             let mut device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
@@ -402,7 +412,10 @@ impl Device {
                     device_create_info
                 };
 
-            device_create_info = device_create_info.push_next(&mut device_buffer_address_pnext);
+            device_create_info = device_create_info
+                .push_next(&mut device_buffer_address_pnext)
+                .push_next(&mut fea_16_bit_storage_pnext)
+                .push_next(&mut scalar_block_layout_pnext);
 
             let handle = pdevice
                 .instance

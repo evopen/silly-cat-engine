@@ -31,9 +31,9 @@ anyhow = "1.0.38"
 glob = "0.3.0"
 
 [[bin]]
-name = "daemon"
-path = "src/rt-pipeline/bin/main.rs"
+name = "rt-pipeline"
+path = "src/bin/rt-pipeline/main.rs"
 
 [[bin]]
-name = "client"
-path = "src/compute/bin/main.rs"
+name = "compute"
+path = "src/bin/compute/main.rs"

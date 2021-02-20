@@ -111,8 +111,13 @@ impl Engine {
                 },
                 safe_vk::DescriptorSetLayoutBinding {
                     binding: 2,
-                    descriptor_type: safe_vk::DescriptorType::UniformBuffer,
-                    stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
+                    descriptor_type: safe_vk::DescriptorType::StorageBuffer,
+                    stage_flags: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 3,
+                    descriptor_type: safe_vk::DescriptorType::StorageBuffer,
+                    stage_flags: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                 },
             ],
         ));
@@ -182,8 +187,15 @@ impl Engine {
             safe_vk::DescriptorSetUpdateInfo {
                 binding: 2,
                 detail: safe_vk::DescriptorSetUpdateDetail::Buffer {
-                    buffer: uniform_buffer.clone(),
-                    offset: 0,
+                    buffer: scene.sole_buffer().clone(),
+                    offset: scene.sole_geometry_index_buffer_offset(),
+                },
+            },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 3,
+                detail: safe_vk::DescriptorSetUpdateDetail::Buffer {
+                    buffer: scene.sole_buffer().clone(),
+                    offset: scene.sole_geometry_vertex_buffer_offset(),
                 },
             },
         ]);

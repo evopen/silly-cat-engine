@@ -1,17 +1,18 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_debug_printf : require
 #extension GL_GOOGLE_include_directive : require
 
 layout(binding = 0, set = 0, rgba32f) uniform image2D storage_image;
 layout(binding = 1, set = 0) uniform accelerationStructureEXT tlas;
 
-layout(binding = 2, set = 0) uniform Camera
-{
-    vec3 origin;
-    vec3 dir;
-}
-camera;
+// layout(binding = 2, set = 0) uniform Camera
+// {
+//     vec3 origin;
+//     vec3 dir;
+// }
+// camera;
 
 layout(location = 0) rayPayloadEXT vec3 payload;
 
@@ -27,9 +28,15 @@ void main()
     // This scene uses a right-handed coordinate system like the OBJ file format, where the
     // +x axis points right, the +y axis points up, and the -z axis points into the screen.
     // The camera is located at (-0.001, 0, 53).
-    const vec3 cameraOrigin = vec3(-0.001, 0.0, 3.0);
+    const vec3 cameraOrigin = vec3(-0.001, 1.0, 6.0);
     // Define the field of view by the vertical slope of the topmost rays:
     const float fovVerticalSlope = 1.0 / 5.0;
+
+    const vec2 screenUV = vec2(2.0 * (float(pixel.x) + 0.5 - 0.5 * resolution.x) / resolution.y, //
+        -(2.0 * (float(pixel.y) + 0.5 - 0.5 * resolution.y) / resolution.y) // Flip the y axis
+    );
+
+    vec3 rayDirection = vec3(fovVerticalSlope * screenUV.x, fovVerticalSlope * screenUV.y, -1.0);
 
     const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
     const vec2 uv = pixel_center / vec2(gl_LaunchSizeEXT.xy);
@@ -38,9 +45,7 @@ void main()
     float tmin = 0.001;
     float tmax = 10000.0;
 
-    const vec3 ray_dir = vec3(d.x, -d.y, -0.5);
-
-    traceRayEXT(tlas, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, camera.origin, tmin, ray_dir, tmax, 0);
+    traceRayEXT(tlas, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, cameraOrigin, tmin, rayDirection, tmax, 0);
 
     imageStore(storage_image, pixel, vec4(payload, 1.0));
 }

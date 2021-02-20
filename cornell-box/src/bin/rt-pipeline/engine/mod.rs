@@ -234,7 +234,7 @@ impl Engine {
             allocator.clone(),
             pipeline_layout,
             shader_stages,
-            1,
+            31,
             &mut queue,
         ));
 

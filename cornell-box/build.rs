@@ -81,6 +81,18 @@ fn main() -> Result<()> {
     );
     options.set_target_spirv(shaderc::SpirvVersion::V1_5);
     options.set_generate_debug_info();
+    options.set_include_callback(|requested, ty, source, depth| {
+        dbg!(&requested);
+        dbg!(&source);
+        let source_path = PathBuf::from(source);
+        let folder = source_path.parent().unwrap();
+        let requested_path = folder.join(requested);
+
+        Ok(shaderc::ResolvedInclude {
+            resolved_name: requested_path.to_str().unwrap().to_owned(),
+            content: std::fs::read_to_string(requested_path).unwrap(),
+        })
+    });
 
     // This can't be parallelized. The [shaderc::Compiler] is not
     // thread safe. Also, it creates a lot of resources. You could

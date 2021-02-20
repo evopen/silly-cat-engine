@@ -18,38 +18,60 @@ pub use vk_mem::MemoryUsage;
 
 pub mod name {
     pub mod instance {
-        pub mod layer {
-            pub mod khronos {
-                pub const VALIDATION: &str = "VK_LAYER_KHRONOS_validation";
-            }
-            pub mod lunarg {
-                pub const MONITOR: &str = "VK_LAYER_LUNARG_monitor";
-                pub const GFXRECONSTRUCT: &str = "VK_LAYER_LUNARG_gfxreconstruct";
+        pub enum Layer {
+            KhronosValidation,
+            LunargMonitor,
+            LunargGfxreconstruct,
+        }
+        impl Into<&'static str> for &Layer {
+            fn into(self) -> &'static str {
+                match self {
+                    Layer::KhronosValidation => "VK_LAYER_KHRONOS_validation",
+                    Layer::LunargMonitor => "VK_LAYER_LUNARG_monitor",
+                    Layer::LunargGfxreconstruct => "VK_LAYER_LUNARG_gfxreconstruct",
+                }
             }
         }
-        pub mod extension {
-            pub mod ext {
-                pub const DEBUG_UTILS: &str = "VK_EXT_debug_utils";
-                // pub const DEBUG_MARKER: &str = "VK_EXT_debug_marker";
-            }
-            pub mod khr {
-                pub const WIN32_SURFACE: &str = "VK_KHR_win32_surface";
-                pub const SURFACE: &str = "VK_KHR_surface";
+
+        pub enum Extension {
+            ExtDebugUtils,
+            KhrWin32Surface,
+            KhrSurface,
+        }
+
+        impl Into<&'static str> for &Extension {
+            fn into(self) -> &'static str {
+                match self {
+                    Extension::ExtDebugUtils => "VK_EXT_debug_utils",
+                    Extension::KhrWin32Surface => "VK_KHR_win32_surface",
+                    Extension::KhrSurface => "VK_KHR_surface",
+                }
             }
         }
     }
     pub mod device {
         mod layer {}
-        pub mod extension {
-            pub mod khr {
-                pub const SWAPCHAIN: &str = "VK_KHR_swapchain";
-                pub const DEFERRED_HOST_OPERATIONS: &str = "VK_KHR_deferred_host_operations";
-                pub const RAY_TRACING_PIPELINE: &str = "VK_KHR_ray_tracing_pipeline";
-                pub const ACCELERATION_STRUCTURE: &str = "VK_KHR_acceleration_structure";
-                pub const BUFFER_DEVICE_ADDRESS: &str = "VK_KHR_buffer_device_address";
-                pub const SHADER_NON_SEMANTIC_INFO: &str = "VK_KHR_shader_non_semantic_info";
-                pub const RAY_QUERY: &str = "VK_KHR_ray_query";
-                pub const _16BIT_STORAGE: &str = "VK_KHR_16bit_storage";
+
+        #[derive(Debug, PartialEq)]
+        pub enum Extension {
+            KhrSwapchain,
+            KhrDeferredHostOperations,
+            KhrRayTracingPipeline,
+            KhrAccelerationStructure,
+            KhrShaderNonSemanticInfo,
+            KhrRayQuery,
+        }
+
+        impl Into<&'static str> for &Extension {
+            fn into(self) -> &'static str {
+                match self {
+                    Extension::KhrSwapchain => "VK_KHR_swapchain",
+                    Extension::KhrDeferredHostOperations => "VK_KHR_deferred_host_operations",
+                    Extension::KhrRayTracingPipeline => "VK_KHR_ray_tracing_pipeline",
+                    Extension::KhrAccelerationStructure => "VK_KHR_acceleration_structure",
+                    Extension::KhrShaderNonSemanticInfo => "VK_KHR_shader_non_semantic_info",
+                    Extension::KhrRayQuery => "VK_KHR_ray_query",
+                }
             }
         }
     }
@@ -92,7 +114,11 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn new(entry: Arc<Entry>, layer_names: &[&str], extension_names: &[&str]) -> Self {
+    pub fn new(
+        entry: Arc<Entry>,
+        layers: &[name::instance::Layer],
+        extensions: &[name::instance::Extension],
+    ) -> Self {
         let app_name = CString::new(env!("CARGO_PKG_NAME")).unwrap();
         let engine_name = CString::new("Silly Cat Engine").unwrap();
 
@@ -103,18 +129,18 @@ impl Instance {
             .engine_version(0)
             .api_version(vk::make_version(1, 2, 0));
 
-        let layer_names = layer_names
+        let layer_names = layers
             .iter()
-            .map(|s| CString::new(*s).unwrap())
+            .map(|layer| CString::new::<&'static str>(layer.into()).unwrap())
             .collect::<Vec<_>>();
         let layers_names_raw: Vec<*const i8> = layer_names
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
 
-        let extension_names = extension_names
+        let extension_names = extensions
             .iter()
-            .map(|s| CString::new(*s).unwrap())
+            .map(|extension| CString::new::<&'static str>(extension.into()).unwrap())
             .collect::<Vec<_>>();
         let extension_names_raw = extension_names
             .iter()
@@ -299,6 +325,12 @@ impl Drop for Surface {
     }
 }
 
+struct PhysicalDeviceFeatureEnablement {
+    ray_tracing_pipeline: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+    acceleration_structure: vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+    ray_query: vk::PhysicalDeviceRayQueryFeaturesKHR,
+}
+
 pub struct Device {
     handle: ash::Device,
     pdevice: Arc<PhysicalDevice>,
@@ -311,7 +343,7 @@ impl Device {
     pub fn new(
         pdevice: Arc<PhysicalDevice>,
         device_features: &vk::PhysicalDeviceFeatures,
-        device_extension_names: &[&str],
+        device_extensions: &[name::device::Extension],
     ) -> Self {
         unsafe {
             let priorities = [1.0];
@@ -321,45 +353,57 @@ impl Device {
                 .queue_priorities(&priorities)
                 .build()];
 
-            let device_extension_names = device_extension_names
+            let device_extension_names = device_extensions
                 .iter()
-                .map(|s| CString::new(*s).unwrap())
+                .map(|extension| CString::new::<&'static str>(extension.into()).unwrap())
                 .collect::<Vec<_>>();
             let device_extension_names_raw: Vec<*const i8> = device_extension_names
                 .iter()
                 .map(|raw_name| raw_name.as_ptr())
                 .collect();
 
-            let device_create_info = vk::DeviceCreateInfo::builder()
+            let mut ray_tracing_pipeline_pnext =
+                vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
+                    .ray_tracing_pipeline(true)
+                    .build();
+            let mut acceleration_structure_pnext =
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
+                    .acceleration_structure(true)
+                    .build();
+            let mut ray_query_pnext = vk::PhysicalDeviceRayQueryFeaturesKHR::builder()
+                .ray_query(true)
+                .build();
+            let mut device_buffer_address_pnext =
+                vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
+                    .buffer_device_address(true)
+                    .build();
+
+            let mut device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_info)
                 .enabled_extension_names(&device_extension_names_raw)
-                .enabled_features(&device_features)
-                .push_next(
-                    &mut vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
-                        .ray_tracing_pipeline(true)
-                        .build(),
-                )
-                .push_next(
-                    &mut vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
-                        .buffer_device_address(true)
-                        .build(),
-                )
-                .push_next(
-                    &mut vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
-                        .acceleration_structure(true)
-                        .build(),
-                )
-                .push_next(
-                    &mut vk::PhysicalDeviceScalarBlockLayoutFeatures::builder()
-                        .scalar_block_layout(true)
-                        .build(),
-                )
-                .push_next(
-                    &mut vk::PhysicalDeviceRayQueryFeaturesKHR::builder()
-                        .ray_query(true)
-                        .build(),
-                )
-                .build();
+                .enabled_features(&device_features);
+
+            device_create_info =
+                if device_extensions.contains(&name::device::Extension::KhrRayTracingPipeline) {
+                    device_create_info.push_next(&mut ray_tracing_pipeline_pnext)
+                } else {
+                    device_create_info
+                };
+            device_create_info =
+                if device_extensions.contains(&name::device::Extension::KhrRayQuery) {
+                    device_create_info.push_next(&mut ray_query_pnext)
+                } else {
+                    device_create_info
+                };
+            device_create_info =
+                if device_extensions.contains(&name::device::Extension::KhrAccelerationStructure) {
+                    device_create_info.push_next(&mut acceleration_structure_pnext)
+                } else {
+                    device_create_info
+                };
+
+            device_create_info = device_create_info.push_next(&mut device_buffer_address_pnext);
+
             let handle = pdevice
                 .instance
                 .handle

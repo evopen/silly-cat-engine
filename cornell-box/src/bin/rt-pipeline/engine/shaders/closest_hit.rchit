@@ -71,6 +71,7 @@ HitInfo getObjectHitInfo()
     // Flip the normal so it points against the ray direction:
     const vec3 rayDirection = gl_WorldRayDirectionEXT;
     result.worldNormal = faceforward(result.worldNormal, rayDirection, result.worldNormal);
+    result.color = vec3(0.7);
 
     return result;
 }
@@ -80,6 +81,8 @@ void main()
 
     HitInfo hit_info = getObjectHitInfo();
 
-    payload.color = vec3(0.5) + 0.25 * hit_info.worldNormal;
+    payload.color = hit_info.color;
     payload.rayHitSky = false;
+    payload.rayOrigin = hit_info.worldPosition;
+    payload.rayDirection = reflect(gl_WorldRayDirectionEXT, hit_info.worldNormal);
 }

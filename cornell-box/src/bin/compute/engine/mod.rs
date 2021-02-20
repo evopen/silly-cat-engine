@@ -55,13 +55,13 @@ impl Engine {
         let instance = Arc::new(safe_vk::Instance::new(
             entry,
             &[
-                safe_vk::name::instance::layer::khronos::VALIDATION,
-                safe_vk::name::instance::layer::lunarg::MONITOR,
+                safe_vk::name::instance::Layer::KhronosValidation,
+                safe_vk::name::instance::Layer::LunargMonitor,
             ],
             &[
-                safe_vk::name::instance::extension::khr::WIN32_SURFACE,
-                safe_vk::name::instance::extension::khr::SURFACE,
-                safe_vk::name::instance::extension::ext::DEBUG_UTILS,
+                safe_vk::name::instance::Extension::KhrWin32Surface,
+                safe_vk::name::instance::Extension::KhrSurface,
+                safe_vk::name::instance::Extension::ExtDebugUtils,
             ],
         ));
         let surface = Arc::new(safe_vk::Surface::new(instance.clone(), window));
@@ -75,13 +75,11 @@ impl Engine {
                 ..Default::default()
             },
             &[
-                safe_vk::name::device::extension::khr::SWAPCHAIN,
-                safe_vk::name::device::extension::khr::ACCELERATION_STRUCTURE,
-                safe_vk::name::device::extension::khr::DEFERRED_HOST_OPERATIONS,
-                safe_vk::name::device::extension::khr::BUFFER_DEVICE_ADDRESS,
-                safe_vk::name::device::extension::khr::RAY_TRACING_PIPELINE,
-                safe_vk::name::device::extension::khr::SHADER_NON_SEMANTIC_INFO,
-                safe_vk::name::device::extension::khr::RAY_QUERY,
+                safe_vk::name::device::Extension::KhrSwapchain,
+                safe_vk::name::device::Extension::KhrAccelerationStructure,
+                safe_vk::name::device::Extension::KhrDeferredHostOperations,
+                safe_vk::name::device::Extension::KhrShaderNonSemanticInfo,
+                safe_vk::name::device::Extension::KhrRayQuery,
             ],
         ));
         let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));

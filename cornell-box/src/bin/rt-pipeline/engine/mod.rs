@@ -78,8 +78,8 @@ impl Engine {
                 safe_vk::name::device::Extension::KhrSwapchain,
                 safe_vk::name::device::Extension::KhrAccelerationStructure,
                 safe_vk::name::device::Extension::KhrDeferredHostOperations,
-                safe_vk::name::device::Extension::KhrRayTracingPipeline,
                 safe_vk::name::device::Extension::KhrShaderNonSemanticInfo,
+                safe_vk::name::device::Extension::KhrRayTracingPipeline,
             ],
         ));
         let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));

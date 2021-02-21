@@ -82,17 +82,17 @@ HitInfo get_object_hit_info(rayQueryEXT ray_query)
 }
 
 // Random number generation using pcg32i_random_t, using inc = 1. Our random state is a uint.
-uint stepRNG(uint rngState)
+uint stepRNG(uint rng_state)
 {
-    return rngState * 747796405 + 1;
+    return rng_state * 747796405 + 1;
 }
 
 // Steps the RNG and returns a floating-point value between 0 and 1 inclusive.
-float stepAndOutputRNGFloat(inout uint rngState)
+float stepAndOutputRNGFloat(inout uint rng_state)
 {
     // Condensed version of pcg_output_rxs_m_xs_32_32, with simple conversion to floating-point [0,1].
-    rngState = stepRNG(rngState);
-    uint word = ((rngState >> ((rngState >> 28) + 4)) ^ rngState) * 277803737;
+    rng_state = stepRNG(rng_state);
+    uint word = ((rng_state >> ((rng_state >> 28) + 4)) ^ rng_state) * 277803737;
     word = (word >> 22) ^ word;
     return float(word) / 4294967295.0f;
 }
@@ -140,7 +140,18 @@ void main()
             // Flip the normal so it points against the ray direction:
             hit_info.world_normal = faceforward(hit_info.world_normal, ray_direction, hit_info.world_normal);
             ray_origin = hit_info.world_position;
-            ray_direction = reflect(ray_direction, hit_info.world_normal);
+
+            // For a random diffuse bounce direction, we follow the approach of
+            // Ray Tracing in One Weekend, and generate a random point on a sphere
+            // of radius 1 centered at the normal. This uses the random_unit_vector
+            // function from chapter 8.5:
+            const float theta = 6.2831853 * stepAndOutputRNGFloat(rng_state); // Random in [0, 2pi]
+            const float u = 2.0 * stepAndOutputRNGFloat(rng_state) - 1.0; // Random in [-1, 1]
+            const float r = sqrt(1.0 - u * u);
+            ray_direction = hit_info.world_normal + vec3(r * cos(theta), r * sin(theta), u); // i think this is incorrect
+            // Then normalize the ray direction:
+            ray_direction = normalize(ray_direction);
+
             // pixel_color = vec3(0, reflect(ray_direction, hit_info.world_normal).y, 0);
             // pixel_color = vec3(0, ray_direction.y, 0);
             // if (pixel == vec2(300, 150)) {

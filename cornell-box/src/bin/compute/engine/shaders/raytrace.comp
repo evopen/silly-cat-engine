@@ -75,7 +75,14 @@ HitInfo get_object_hit_info(rayQueryEXT ray_query)
     vec3 object_normal = normalize(cross(v1 - v0, v2 - v0));
     result.world_normal = normalize((object_normal * rayQueryGetIntersectionObjectToWorldEXT(ray_query, true)).xyz);
 
-    result.color = vec3(0.7);
+    const float dotX = dot(result.world_normal, vec3(1.0, 0.0, 0.0));
+    if (dotX > 0.99) {
+        result.color = vec3(0.8, 0.2, 0.2);
+    } else if (dotX < -0.99) {
+        result.color = vec3(0.2, 0.8, 0.2);
+    } else {
+        result.color = vec3(0.8);
+    }
 
     return result;
 }
@@ -114,7 +121,7 @@ void main()
 
     uint rng_state = resolution.x * pixel.y + pixel.x;
 
-    const uint SAMPLE_COUNT = 16;
+    const uint SAMPLE_COUNT = 128;
 
     vec3 summed_pixel_color = vec3(0);
 
@@ -183,7 +190,7 @@ void main()
     }
 
     pixel_color = summed_pixel_color / SAMPLE_COUNT;
-    pixel_color = ACESToneMapping(pixel_color, 1);
+    pixel_color = ACESToneMapping(pixel_color, 2);
 
     imageStore(storage_image, ivec2(pixel), vec4(pixel_color, 1.0));
 

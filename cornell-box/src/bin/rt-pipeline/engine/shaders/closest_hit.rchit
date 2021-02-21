@@ -22,14 +22,13 @@ layout(binding = 3, set = 0, scalar) buffer Vertices
 
 struct HitInfo {
     vec3 color;
-    vec3 objectPosition;
-    vec3 worldPosition;
-    vec3 worldNormal;
+    vec3 world_normal;
+    vec3 world_position;
 };
 
 // Gets hit info about the object at the intersection. This uses GLSL variables
 // defined in closest hit stages instead of ray queries.
-HitInfo getObjectHitInfo()
+HitInfo get_object_hit_info()
 {
     HitInfo result;
     // Get the ID of the triangle
@@ -50,9 +49,9 @@ HitInfo getObjectHitInfo()
     barycentrics.x = 1.0 - barycentrics.y - barycentrics.z;
 
     // Compute the coordinates of the intersection
-    result.objectPosition = v0 * barycentrics.x + v1 * barycentrics.y + v2 * barycentrics.z;
+    vec3 objectPosition = v0 * barycentrics.x + v1 * barycentrics.y + v2 * barycentrics.z;
     // Transform from object space to world space:
-    result.worldPosition = gl_ObjectToWorldEXT * vec4(result.objectPosition, 1.0f);
+    result.world_position = gl_ObjectToWorldEXT * vec4(objectPosition, 1.0f);
 
     // Compute the normal of the triangle in object space, using the right-hand rule:
     //    v2      .
@@ -66,11 +65,11 @@ HitInfo getObjectHitInfo()
     const vec3 objectNormal = cross(v1 - v0, v2 - v0);
     // Transform normals from object space to world space. These use the transpose of the inverse matrix,
     // because they're directions of normals, not positions:
-    result.worldNormal = normalize((objectNormal * gl_WorldToObjectEXT).xyz);
+    result.world_normal = normalize((objectNormal * gl_WorldToObjectEXT).xyz);
 
     // Flip the normal so it points against the ray direction:
     const vec3 rayDirection = gl_WorldRayDirectionEXT;
-    result.worldNormal = faceforward(result.worldNormal, rayDirection, result.worldNormal);
+    result.world_normal = faceforward(result.world_normal, rayDirection, result.world_normal);
     result.color = vec3(0.7);
 
     return result;
@@ -79,10 +78,18 @@ HitInfo getObjectHitInfo()
 void main()
 {
 
-    HitInfo hit_info = getObjectHitInfo();
+    HitInfo hit_info = get_object_hit_info();
 
     payload.color = hit_info.color;
     payload.rayHitSky = false;
-    payload.rayOrigin = hit_info.worldPosition;
-    payload.rayDirection = reflect(gl_WorldRayDirectionEXT, hit_info.worldNormal);
+    payload.rayOrigin = hit_info.world_position;
+    // For a random diffuse bounce direction, we follow the approach of
+    // Ray Tracing in One Weekend, and generate a random point on a sphere
+    // of radius 1 centered at the normal. This uses the random_unit_vector
+    // function from chapter 8.5:
+    const float theta = 6.2831853 * stepAndOutputRNGFloat(payload.rngState); // Random in [0, 2pi]
+    const float u = 2.0 * stepAndOutputRNGFloat(payload.rngState) - 1.0; // Random in [-1, 1]
+    const float r = sqrt(1.0 - u * u);
+
+    payload.rayDirection = normalize(hit_info.world_normal + vec3(r * cos(theta), r * sin(theta), u));
 }

@@ -20,7 +20,7 @@ lunarg_gfxreconstruct.page_guard_copy_on_map = FALSE
 lunarg_gfxreconstruct.page_guard_separate_read = TRUE
 lunarg_gfxreconstruct.page_guard_external_memory = FALSE
 
-khronos_validation.enables = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
+#khronos_validation.enables = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
 #khronos_validation.printf_verbose = true
 #khronos_validation.printf_to_stdout = true
 khronos_validation.printf_buffer_size = 8192

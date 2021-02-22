@@ -25,6 +25,7 @@ const WORKGROUP_HEIGHT: u32 = 8;
 struct PushConstants {
     render_width: u32,
     render_height: u32,
+    sample_batch: u32,
 }
 
 pub struct Engine {
@@ -46,6 +47,7 @@ pub struct Engine {
     uniform_buffer: Arc<safe_vk::Buffer>,
     camera: Camera,
     scene: gltf_wrapper::Scene,
+    push_constants: PushConstants,
 }
 
 impl Engine {
@@ -137,7 +139,7 @@ impl Engine {
             &[&descriptor_set_layout],
             &[vk::PushConstantRange::builder()
                 .offset(0)
-                .size(8)
+                .size(std::mem::size_of::<PushConstants>() as u32)
                 .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
                 .build()],
         ));
@@ -257,6 +259,12 @@ impl Engine {
             glam::Vec3A::new(0.0, 0.0, 0.0),
         );
 
+        let push_constants = PushConstants {
+            render_width: size.width,
+            render_height: size.height,
+            sample_batch: 0,
+        };
+
         log::info!("pipeline created");
 
         Self {
@@ -278,6 +286,7 @@ impl Engine {
             uniform_buffer,
             camera,
             scene,
+            push_constants,
         }
     }
 
@@ -310,9 +319,81 @@ impl Engine {
     //     self.storage_buffer.unmap();
     // }
 
+    fn resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
+        self.size = new_size.clone();
+        self.swapchain.renew();
+    }
+
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
         self.ui_platform.handle_event(event);
         self.camera.input(event);
+        match event {
+            winit::event::Event::NewEvents(_) => {}
+            winit::event::Event::WindowEvent { window_id, event } => {
+                match event {
+                    winit::event::WindowEvent::Resized(size) => {
+                        self.resize(size);
+                    }
+                    winit::event::WindowEvent::Moved(_) => {}
+                    winit::event::WindowEvent::CloseRequested => {}
+                    winit::event::WindowEvent::Destroyed => {}
+                    winit::event::WindowEvent::DroppedFile(_) => {}
+                    winit::event::WindowEvent::HoveredFile(_) => {}
+                    winit::event::WindowEvent::HoveredFileCancelled => {}
+                    winit::event::WindowEvent::ReceivedCharacter(_) => {}
+                    winit::event::WindowEvent::Focused(_) => {}
+                    winit::event::WindowEvent::KeyboardInput {
+                        device_id,
+                        input,
+                        is_synthetic,
+                    } => {}
+                    winit::event::WindowEvent::ModifiersChanged(_) => {}
+                    winit::event::WindowEvent::CursorMoved {
+                        device_id,
+                        position,
+                        modifiers,
+                    } => {}
+                    winit::event::WindowEvent::CursorEntered { device_id } => {}
+                    winit::event::WindowEvent::CursorLeft { device_id } => {}
+                    winit::event::WindowEvent::MouseWheel {
+                        device_id,
+                        delta,
+                        phase,
+                        modifiers,
+                    } => {}
+                    winit::event::WindowEvent::MouseInput {
+                        device_id,
+                        state,
+                        button,
+                        modifiers,
+                    } => {}
+                    winit::event::WindowEvent::TouchpadPressure {
+                        device_id,
+                        pressure,
+                        stage,
+                    } => {}
+                    winit::event::WindowEvent::AxisMotion {
+                        device_id,
+                        axis,
+                        value,
+                    } => {}
+                    winit::event::WindowEvent::Touch(_) => {}
+                    winit::event::WindowEvent::ScaleFactorChanged {
+                        scale_factor,
+                        new_inner_size,
+                    } => {}
+                    winit::event::WindowEvent::ThemeChanged(_) => {}
+                }
+            }
+            winit::event::Event::DeviceEvent { device_id, event } => {}
+            winit::event::Event::UserEvent(_) => {}
+            winit::event::Event::Suspended => {}
+            winit::event::Event::Resumed => {}
+            winit::event::Event::MainEventsCleared => {}
+            winit::event::Event::RedrawRequested(_) => {}
+            winit::event::Event::RedrawEventsCleared => {}
+            winit::event::Event::LoopDestroyed => {}
+        }
     }
 
     pub fn update(&mut self) {
@@ -380,10 +461,7 @@ impl Engine {
         let mut sbt_callable_region = sbt_ray_gen_region;
         sbt_callable_region.size = 0;
 
-        let push_constants = PushConstants {
-            render_width: 800,
-            render_height: 600,
-        };
+        self.push_constants.sample_batch += 1;
 
         command_buffer.encode(|recorder| {
             // recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
@@ -402,6 +480,12 @@ impl Engine {
             );
             recorder.bind_ray_tracing_pipeline(self.pipeline.clone(), |rec, pipeline| {
                 rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
+                rec.push_constants(
+                    pipeline.layout(),
+                    vk::ShaderStageFlags::RAYGEN_KHR,
+                    0,
+                    bytemuck::cast_slice(&[self.push_constants]),
+                );
                 rec.trace_ray(
                     &sbt_ray_gen_region,
                     &sbt_miss_region,
@@ -410,12 +494,6 @@ impl Engine {
                     WIDTH,
                     HEIGHT,
                     1,
-                );
-                rec.push_constants(
-                    pipeline.layout(),
-                    vk::ShaderStageFlags::RAYGEN_KHR,
-                    0,
-                    bytemuck::cast_slice(&[push_constants]),
                 );
             });
             recorder.set_image_layout(

@@ -70,7 +70,15 @@ HitInfo get_object_hit_info()
     // Flip the normal so it points against the ray direction:
     const vec3 rayDirection = gl_WorldRayDirectionEXT;
     result.world_normal = faceforward(result.world_normal, rayDirection, result.world_normal);
-    result.color = vec3(0.7);
+
+    float dotx = dot(result.world_normal, vec3(1, 0, 0));
+    if (dotx > 0.99) {
+        result.color = vec3(0.8, 0.2, 0.2);
+    } else if (dotx < -0.99) {
+        result.color = vec3(0.2, 0.8, 0.2);
+    } else {
+        result.color = vec3(0.7);
+    }
 
     return result;
 }

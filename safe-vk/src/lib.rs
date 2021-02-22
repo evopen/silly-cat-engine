@@ -899,7 +899,7 @@ impl Queue {
         let wait_handles = wait_semaphore.iter().map(|s| s.handle).collect::<Vec<_>>();
 
         let info = vk::PresentInfoKHR::builder()
-            .swapchains(&[swapchain.handle])
+            .swapchains(&[swapchain.vk_handle()])
             .wait_semaphores(wait_handles.as_slice())
             .image_indices(&[index])
             .build();
@@ -1595,10 +1595,11 @@ impl Drop for CommandBuffer {
 }
 
 pub struct Swapchain {
-    handle: vk::SwapchainKHR,
+    handle: std::sync::atomic::AtomicU64,
     device: Arc<Device>,
     surface: Arc<Surface>,
-    extent: vk::Extent2D,
+    width: std::sync::atomic::AtomicU32,
+    height: std::sync::atomic::AtomicU32,
     format: vk::Format,
     image_available_semaphore: BinarySemaphore,
 }
@@ -1636,14 +1637,18 @@ impl Swapchain {
             let handle = device
                 .swapchain_loader
                 .create_swapchain(&swapchain_create_info, None)
-                .unwrap();
+                .unwrap()
+                .as_raw();
             let image_available_semaphore = BinarySemaphore::new(device.clone());
 
             Self {
-                handle,
+                handle: std::sync::atomic::AtomicU64::new(handle),
                 device,
                 surface,
-                extent: surface_capabilities.current_extent,
+                width: std::sync::atomic::AtomicU32::new(surface_capabilities.current_extent.width),
+                height: std::sync::atomic::AtomicU32::new(
+                    surface_capabilities.current_extent.height,
+                ),
                 format,
                 image_available_semaphore,
             }
@@ -1656,7 +1661,9 @@ impl Swapchain {
                 .device
                 .swapchain_loader
                 .acquire_next_image(
-                    self.handle,
+                    vk::SwapchainKHR::from_raw(
+                        self.handle.load(std::sync::atomic::Ordering::SeqCst),
+                    ),
                     0,
                     self.image_available_semaphore.handle,
                     vk::Fence::null(),
@@ -1666,12 +1673,15 @@ impl Swapchain {
         }
     }
 
-    pub fn renew(&mut self) {
+    pub fn renew(&self) {
         let swapchain_loader = &self.device.swapchain_loader;
         let surface_loader = &self.device.pdevice.instance.surface_loader;
         let pdevice = &self.device.pdevice;
         unsafe {
-            swapchain_loader.destroy_swapchain(self.handle, None);
+            swapchain_loader.destroy_swapchain(
+                vk::SwapchainKHR::from_raw(self.handle.load(std::sync::atomic::Ordering::SeqCst)),
+                None,
+            );
             let surface_capabilities = surface_loader
                 .get_physical_device_surface_capabilities(pdevice.handle, self.surface.handle)
                 .unwrap();
@@ -1695,24 +1705,48 @@ impl Swapchain {
                 .present_mode(vk::PresentModeKHR::FIFO)
                 .clipped(true)
                 .image_array_layers(1);
-            self.handle = swapchain_loader
-                .create_swapchain(&swapchain_create_info, None)
-                .unwrap();
-            self.extent = surface_capabilities.current_extent;
+            self.handle.store(
+                swapchain_loader
+                    .create_swapchain(&swapchain_create_info, None)
+                    .unwrap()
+                    .as_raw(),
+                std::sync::atomic::Ordering::SeqCst,
+            );
+            self.width.store(
+                surface_capabilities.current_extent.width,
+                std::sync::atomic::Ordering::SeqCst,
+            );
+            self.height.store(
+                surface_capabilities.current_extent.height,
+                std::sync::atomic::Ordering::SeqCst,
+            );
         }
     }
 
     pub fn image_available_semaphore(&self) -> &BinarySemaphore {
         &self.image_available_semaphore
     }
+
+    fn vk_handle(&self) -> vk::SwapchainKHR {
+        vk::SwapchainKHR::from_raw(self.handle.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    fn width(&self) -> u32 {
+        self.width.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height.load(std::sync::atomic::Ordering::SeqCst)
+    }
 }
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
         unsafe {
-            self.device
-                .swapchain_loader
-                .destroy_swapchain(self.handle, None)
+            self.device.swapchain_loader.destroy_swapchain(
+                vk::SwapchainKHR::from_raw(self.handle.load(std::sync::atomic::Ordering::SeqCst)),
+                None,
+            )
         }
     }
 }
@@ -1936,7 +1970,7 @@ impl Image {
             let device = swapchain.device.as_ref();
             let images = device
                 .swapchain_loader
-                .get_swapchain_images(swapchain.handle)
+                .get_swapchain_images(swapchain.vk_handle())
                 .unwrap();
 
             let results = images
@@ -1947,8 +1981,8 @@ impl Image {
                         image_type: ImageType::Swapchain {
                             swapchain: swapchain.clone(),
                         },
-                        width: swapchain.extent.width,
-                        height: swapchain.extent.height,
+                        width: swapchain.width(),
+                        height: swapchain.height(),
                         layout: std::sync::atomic::AtomicI32::new(
                             vk::ImageLayout::UNDEFINED.as_raw(),
                         ),

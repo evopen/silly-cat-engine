@@ -16,6 +16,16 @@ layout(binding = 1, set = 0) uniform accelerationStructureEXT tlas;
 // }
 // camera;
 
+struct PushConstants {
+    uint render_width;
+    uint render_height;
+};
+
+layout(push_constant) uniform PushConsts
+{
+    PushConstants push_constants;
+};
+
 layout(location = 0) rayPayloadEXT PassableInfo payload;
 
 vec3 ACESToneMapping(vec3 color, float adapted_lum)

@@ -125,6 +125,7 @@ impl UiPass {
                 &uniform_descriptor_set_layout,
                 &texture_descriptor_set_layout,
             ],
+            &[],
         ));
 
         let render_pass = Arc::new(safe_vk::RenderPass::new(

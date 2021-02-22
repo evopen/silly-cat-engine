@@ -1110,6 +1110,13 @@ pub trait PipelineRecorder {
         layout: &PipelineLayout,
         first_set: u32,
     );
+    fn push_constants(
+        &mut self,
+        layout: &PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        constants: &[u8],
+    );
 }
 
 pub trait GeneralRecorder {}
@@ -1139,6 +1146,23 @@ impl<'a> PipelineRecorder for CommandRecorder<'a> {
         descriptor_sets
             .into_iter()
             .for_each(|set| self.command_buffer.resources.push(set));
+    }
+    fn push_constants(
+        &mut self,
+        layout: &PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        constants: &[u8],
+    ) {
+        unsafe {
+            self.device().handle.cmd_push_constants(
+                self.command_buffer.handle,
+                layout.handle,
+                stage_flags,
+                offset,
+                constants,
+            )
+        }
     }
 }
 
@@ -2355,6 +2379,7 @@ impl PipelineLayout {
         device: Arc<Device>,
         name: Option<&str>,
         set_layouts: &[&DescriptorSetLayout],
+        push_constant_ranges: &[vk::PushConstantRange],
     ) -> Self {
         let set_layouts = set_layouts
             .iter()
@@ -2362,6 +2387,7 @@ impl PipelineLayout {
             .collect::<Vec<_>>();
         let info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(set_layouts.as_slice())
+            .push_constant_ranges(push_constant_ranges)
             .build();
         unsafe {
             let handle = device.handle.create_pipeline_layout(&info, None).unwrap();

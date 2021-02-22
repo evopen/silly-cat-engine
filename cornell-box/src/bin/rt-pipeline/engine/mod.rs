@@ -12,11 +12,20 @@ use image::ImageBuffer;
 use safe_vk::{vk, PipelineRecorder};
 use vk::CommandBuffer;
 
+use bytemuck::{Pod, Zeroable};
+
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 
 const WORKGROUP_WIDTH: u32 = 16;
 const WORKGROUP_HEIGHT: u32 = 8;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+struct PushConstants {
+    render_width: u32,
+    render_height: u32,
+}
 
 pub struct Engine {
     ui_platform: egui_winit_platform::Platform,
@@ -124,8 +133,13 @@ impl Engine {
 
         let pipeline_layout = Arc::new(safe_vk::PipelineLayout::new(
             device.clone(),
-            Some("compute pipeline layout"),
+            Some("rt pipeline layout"),
             &[&descriptor_set_layout],
+            &[vk::PushConstantRange::builder()
+                .offset(0)
+                .size(8)
+                .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+                .build()],
         ));
 
         let mut result_image = safe_vk::Image::new(
@@ -366,6 +380,11 @@ impl Engine {
         let mut sbt_callable_region = sbt_ray_gen_region;
         sbt_callable_region.size = 0;
 
+        let push_constants = PushConstants {
+            render_width: 800,
+            render_height: 600,
+        };
+
         command_buffer.encode(|recorder| {
             // recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
             //     rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
@@ -391,6 +410,12 @@ impl Engine {
                     WIDTH,
                     HEIGHT,
                     1,
+                );
+                rec.push_constants(
+                    pipeline.layout(),
+                    vk::ShaderStageFlags::RAYGEN_KHR,
+                    0,
+                    bytemuck::cast_slice(&[push_constants]),
                 );
             });
             recorder.set_image_layout(

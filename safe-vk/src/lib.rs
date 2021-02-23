@@ -5,11 +5,12 @@ use ash::version::{DeviceV1_0, DeviceV1_2, EntryV1_0, InstanceV1_0, InstanceV1_1
 
 use anyhow::Result;
 
+use bytemuck::cast_slice;
 use vk::Handle;
 
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 
 use std::sync::{Arc, Mutex};
 
@@ -104,6 +105,36 @@ impl Entry {
         };
         version_str
     }
+
+    pub fn supported_instance_layers(&self) -> Vec<String> {
+        self.handle
+            .enumerate_instance_layer_properties()
+            .unwrap()
+            .iter()
+            .map(|layer| {
+                unsafe { CStr::from_ptr(layer.layer_name.as_ptr() as *const std::os::raw::c_char) }
+                    .to_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+    }
+
+    pub fn supported_instance_extensions(&self) -> Vec<String> {
+        self.handle
+            .enumerate_instance_extension_properties()
+            .unwrap()
+            .iter()
+            .map(|ext| {
+                unsafe {
+                    CStr::from_ptr(ext.extension_name.as_ptr() as *const std::os::raw::c_char)
+                }
+                .to_str()
+                .unwrap()
+                .to_owned()
+            })
+            .collect::<Vec<_>>()
+    }
 }
 
 pub struct Instance {
@@ -138,6 +169,14 @@ impl Instance {
             .map(|raw_name| raw_name.as_ptr())
             .collect();
 
+        let supported_layers = entry.supported_instance_layers();
+        for layer in layers {
+            let name: &str = layer.into();
+            if !supported_layers.contains(&name.to_owned()) {
+                panic!("not support layer {}", &name);
+            }
+        }
+
         let extension_names = extensions
             .iter()
             .map(|extension| CString::new::<&'static str>(extension.into()).unwrap())
@@ -147,11 +186,20 @@ impl Instance {
             .map(|ext| ext.as_ptr())
             .collect::<Vec<_>>();
 
+        let supported_extensions = entry.supported_instance_extensions();
+        for extension in extensions {
+            let name: &str = extension.into();
+            if !supported_extensions.contains(&name.to_owned()) {
+                panic!("not support extension {}", &name);
+            }
+        }
+
         let create_info = vk::InstanceCreateInfo::builder()
             .application_info(&appinfo)
             .enabled_layer_names(&layers_names_raw)
             .enabled_extension_names(&extension_names_raw);
         let handle = unsafe { entry.handle.create_instance(&create_info, None).unwrap() };
+
         let surface_loader = ash::extensions::khr::Surface::new(&entry.handle, &handle);
 
         let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry.handle, &handle);

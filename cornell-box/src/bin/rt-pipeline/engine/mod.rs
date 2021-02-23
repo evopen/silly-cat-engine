@@ -63,17 +63,26 @@ impl Engine {
                 style: Default::default(),
             });
         let entry = Arc::new(safe_vk::Entry::new().unwrap());
+        #[cfg(target_os = "linux")]
+        let extensions = vec![
+            safe_vk::name::instance::Extension::KhrSurface,
+            safe_vk::name::instance::Extension::ExtDebugUtils,
+            safe_vk::name::instance::Extension::KhrXcbSurface,
+            safe_vk::name::instance::Extension::KhrXlibSurface,
+        ];
+        #[cfg(target_os = "windows")]
+        let extensions = vec![
+            safe_vk::name::instance::Extension::KhrSurface,
+            safe_vk::name::instance::Extension::ExtDebugUtils,
+            safe_vk::name::instance::Extension::KhrWin32Surface,
+        ];
         let instance = Arc::new(safe_vk::Instance::new(
             entry,
             &[
                 safe_vk::name::instance::Layer::KhronosValidation,
                 safe_vk::name::instance::Layer::LunargMonitor,
             ],
-            &[
-                safe_vk::name::instance::Extension::KhrWin32Surface,
-                safe_vk::name::instance::Extension::KhrSurface,
-                safe_vk::name::instance::Extension::ExtDebugUtils,
-            ],
+            extensions.as_slice(),
         ));
         let surface = Arc::new(safe_vk::Surface::new(instance.clone(), window));
 
@@ -320,8 +329,9 @@ impl Engine {
     // }
 
     fn resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
+        log::debug!("resizing");
         self.size = new_size.clone();
-        self.swapchain.renew();
+        // self.swapchain.renew();
     }
 
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {

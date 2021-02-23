@@ -38,6 +38,8 @@ pub mod name {
             ExtDebugUtils,
             KhrWin32Surface,
             KhrSurface,
+            KhrXlibSurface,
+            KhrXcbSurface,
         }
 
         impl Into<&'static str> for &Extension {
@@ -46,6 +48,8 @@ pub mod name {
                     Extension::ExtDebugUtils => "VK_EXT_debug_utils",
                     Extension::KhrWin32Surface => "VK_KHR_win32_surface",
                     Extension::KhrSurface => "VK_KHR_surface",
+                    Extension::KhrXlibSurface => "VK_KHR_xlib_surface",
+                    Extension::KhrXcbSurface => "VK_KHR_xcb_surface",
                 }
             }
         }
@@ -312,6 +316,11 @@ impl PhysicalDevice {
                     .push_next(&mut props)
                     .build(),
             );
+            let prop = instance.handle.get_physical_device_properties(pdevice);
+            let device_name = unsafe { CStr::from_ptr(prop.device_name.as_ptr()) }
+                .to_str()
+                .unwrap();
+            log::info!("Selected Device: {}", device_name);
             let ray_tracing_pipeline_properties = PhysicalDeviceRayTracingPipelineProperties {
                 shader_group_handle_size: props.shader_group_handle_size,
                 max_ray_recursion_depth: props.max_ray_recursion_depth,

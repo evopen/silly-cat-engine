@@ -86,7 +86,10 @@ impl Engine {
         ));
         let surface = Arc::new(safe_vk::Surface::new(instance.clone(), window));
 
-        let pdevice = Arc::new(safe_vk::PhysicalDevice::new(instance, Some(surface)));
+        let pdevice = Arc::new(safe_vk::PhysicalDevice::new(
+            instance,
+            Some(surface.as_ref()),
+        ));
         let device = Arc::new(safe_vk::Device::new(
             pdevice,
             &vk::PhysicalDeviceFeatures {
@@ -102,7 +105,7 @@ impl Engine {
                 safe_vk::name::device::Extension::KhrRayTracingPipeline,
             ],
         ));
-        let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone()));
+        let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone(), surface.clone()));
         let mut queue = safe_vk::Queue::new(device.clone());
         let allocator = Arc::new(safe_vk::Allocator::new(device.clone()));
         let ui_pass = egui_backend::UiPass::new(allocator.clone());

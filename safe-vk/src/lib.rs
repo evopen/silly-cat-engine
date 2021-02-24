@@ -241,12 +241,11 @@ pub struct PhysicalDevice {
     handle: vk::PhysicalDevice,
     instance: Arc<Instance>,
     queue_family_index: u32,
-    surface: Option<Arc<Surface>>,
     ray_tracing_pipeline_properties: PhysicalDeviceRayTracingPipelineProperties,
 }
 
 impl PhysicalDevice {
-    pub fn new(instance: Arc<Instance>, surface: Option<Arc<Surface>>) -> Self {
+    pub fn new(instance: Arc<Instance>, surface: Option<&Surface>) -> Self {
         let surface_loader = &instance.surface_loader;
         let pdevices =
             unsafe { instance.handle.enumerate_physical_devices() }.expect("Physical device error");
@@ -335,7 +334,6 @@ impl PhysicalDevice {
                 handle: pdevice,
                 instance,
                 queue_family_index: queue_family_index as u32,
-                surface,
                 ray_tracing_pipeline_properties,
             }
         }
@@ -1662,8 +1660,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(device: Arc<Device>) -> Self {
-        let surface = device.pdevice.surface.as_ref().unwrap().clone();
+    pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> Self {
         unsafe {
             let surface_loader = &device.pdevice.instance.surface_loader;
             let surface_capabilities = surface_loader
@@ -2779,7 +2776,6 @@ impl RayTracingPipeline {
                     rt_p.shader_group_handle_size as usize * group_create_infos.len(),
                 )
                 .unwrap();
-            dbg!(&shader_handle_storage.len());
             assert!(rt_p.shader_group_base_alignment % rt_p.shader_group_handle_alignment == 0);
             let sbt_stride = rt_p.shader_group_base_alignment
                 * ((rt_p.shader_group_handle_size + rt_p.shader_group_base_alignment - 1)

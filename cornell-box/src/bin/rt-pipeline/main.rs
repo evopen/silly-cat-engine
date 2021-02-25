@@ -7,7 +7,11 @@ fn main() {
     env_logger::init();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let event_loop = winit::event_loop::EventLoop::new();
-    let window = winit::window::Window::new(&event_loop).unwrap();
+    let window = winit::window::WindowBuilder::new()
+        .with_inner_size(winit::dpi::PhysicalSize::new(200, 200))
+        .with_title("hello")
+        .build(&event_loop)
+        .unwrap();
 
     rt.block_on(async {
         let mut engine = Engine::new(&window);

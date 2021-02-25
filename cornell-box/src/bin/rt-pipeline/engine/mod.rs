@@ -14,9 +14,6 @@ use vk::CommandBuffer;
 
 use bytemuck::{Pod, Zeroable};
 
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
-
 const WORKGROUP_WIDTH: u32 = 16;
 const WORKGROUP_HEIGHT: u32 = 8;
 
@@ -160,8 +157,8 @@ impl Engine {
             Some("result image"),
             allocator.clone(),
             vk::Format::R32G32B32A32_SFLOAT,
-            WIDTH,
-            HEIGHT,
+            swapchain.width(),
+            swapchain.height(),
             vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::STORAGE
                 | vk::ImageUsageFlags::TRANSFER_DST
@@ -339,6 +336,34 @@ impl Engine {
             .into_iter()
             .map(Arc::new)
             .collect::<Vec<_>>();
+        let mut result_image = safe_vk::Image::new(
+            Some("result image"),
+            self.allocator.clone(),
+            vk::Format::R32G32B32A32_SFLOAT,
+            self.swapchain.width(),
+            self.swapchain.height(),
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::TRANSFER_SRC,
+            safe_vk::MemoryUsage::GpuOnly,
+        );
+
+        result_image.set_layout(
+            vk::ImageLayout::GENERAL,
+            &mut self.queue,
+            self.command_pool.clone(),
+        );
+
+        self.result_image = Arc::new(result_image);
+
+        let result_image_view = Arc::new(safe_vk::ImageView::new(self.result_image.clone()));
+        self.descriptor_set
+            .update(&[safe_vk::DescriptorSetUpdateInfo {
+                binding: 0,
+                detail: safe_vk::DescriptorSetUpdateDetail::Image(result_image_view.clone()),
+            }]);
+        self.push_constants.sample_batch = 0;
     }
 
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
@@ -508,8 +533,8 @@ impl Engine {
                     &sbt_miss_region,
                     &sbt_hit_region,
                     &sbt_callable_region,
-                    WIDTH,
-                    HEIGHT,
+                    self.result_image.width(),
+                    self.result_image.height(),
                     1,
                 );
             });

@@ -9,6 +9,7 @@ use bytemuck::cast_slice;
 use vk::Handle;
 
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, LinkedList};
 use std::ffi::{CStr, CString};
 
@@ -1786,11 +1787,11 @@ impl Swapchain {
         &self.image_available_semaphore
     }
 
-    fn vk_handle(&self) -> vk::SwapchainKHR {
+    pub fn vk_handle(&self) -> vk::SwapchainKHR {
         vk::SwapchainKHR::from_raw(self.handle.load(std::sync::atomic::Ordering::SeqCst))
     }
 
-    fn width(&self) -> u32 {
+    pub fn width(&self) -> u32 {
         self.width.load(std::sync::atomic::Ordering::SeqCst)
     }
 
@@ -2884,11 +2885,19 @@ impl Drop for ShaderModule {
     }
 }
 
+impl std::fmt::Debug for DescriptorSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DescriptorSet")
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
 pub struct DescriptorSet {
     handle: vk::DescriptorSet,
     descriptor_pool: Arc<DescriptorPool>,
     descriptor_set_layout: Arc<DescriptorSetLayout>,
-    resources: Vec<Arc<dyn Resource>>,
+    resources: RefCell<BTreeMap<u32, Arc<dyn Resource>>>,
 }
 
 impl DescriptorSet {
@@ -2927,12 +2936,12 @@ impl DescriptorSet {
                 handle,
                 descriptor_pool,
                 descriptor_set_layout,
-                resources: Vec::new(),
+                resources: RefCell::new(BTreeMap::new()),
             }
         }
     }
 
-    pub fn update(&mut self, update_infos: &[DescriptorSetUpdateInfo]) {
+    pub fn update(&self, update_infos: &[DescriptorSetUpdateInfo]) {
         let device = self.descriptor_pool.device.clone();
         let bindings = self.descriptor_set_layout.vk_bindings.clone();
 
@@ -2957,7 +2966,10 @@ impl DescriptorSet {
                     );
                 let mut write = match info.detail.borrow() {
                     DescriptorSetUpdateDetail::Buffer { buffer, offset } => {
-                        self.resources.push(buffer.clone());
+                        self.resources
+                            .try_borrow_mut()
+                            .unwrap()
+                            .insert(info.binding, buffer.clone());
                         buffer_infos.push(
                             vk::DescriptorBufferInfo::builder()
                                 .buffer(buffer.handle)
@@ -2971,7 +2983,10 @@ impl DescriptorSet {
                             .build()
                     }
                     DescriptorSetUpdateDetail::Image(image_view) => {
-                        self.resources.push(image_view.clone());
+                        self.resources
+                            .try_borrow_mut()
+                            .unwrap()
+                            .insert(info.binding, image_view.clone());
                         image_infos.push(
                             vk::DescriptorImageInfo::builder()
                                 .image_layout(image_view.image.layout())
@@ -2983,7 +2998,10 @@ impl DescriptorSet {
                             .build()
                     }
                     DescriptorSetUpdateDetail::Sampler(sampler) => {
-                        self.resources.push(sampler.clone());
+                        self.resources
+                            .try_borrow_mut()
+                            .unwrap()
+                            .insert(info.binding, sampler.clone());
                         image_infos.push(
                             vk::DescriptorImageInfo::builder()
                                 .sampler(sampler.handle)
@@ -2994,7 +3012,10 @@ impl DescriptorSet {
                             .build()
                     }
                     DescriptorSetUpdateDetail::AccelerationStructure(tlas) => {
-                        self.resources.push(tlas.clone());
+                        self.resources
+                            .try_borrow_mut()
+                            .unwrap()
+                            .insert(info.binding, tlas.clone());
                         tlas_handles.push(tlas.handle);
                         write_acceleration_structure = Some(
                             vk::WriteDescriptorSetAccelerationStructureKHR::builder()

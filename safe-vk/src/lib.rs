@@ -959,10 +959,13 @@ impl Queue {
             .image_indices(&[index])
             .build();
         unsafe {
-            self.device
+            if let Err(e) = self
+                .device
                 .swapchain_loader
                 .queue_present(self.handle, &info)
-                .unwrap();
+            {
+                log::warn!("{:?}", e);
+            }
         }
     }
 }
@@ -1732,10 +1735,6 @@ impl Swapchain {
         let surface_loader = &self.device.pdevice.instance.surface_loader;
         let pdevice = &self.device.pdevice;
         unsafe {
-            swapchain_loader.destroy_swapchain(
-                vk::SwapchainKHR::from_raw(self.handle.load(std::sync::atomic::Ordering::SeqCst)),
-                None,
-            );
             let surface_capabilities = surface_loader
                 .get_physical_device_surface_capabilities(pdevice.handle, self.surface.handle)
                 .unwrap();
@@ -1744,6 +1743,7 @@ impl Swapchain {
                 .get_physical_device_surface_formats(pdevice.handle, self.surface.handle)
                 .unwrap()[0];
 
+            let old_swapchain = self.vk_handle();
             let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
                 .surface(self.surface.handle)
                 .min_image_count(2)
@@ -1758,7 +1758,9 @@ impl Swapchain {
                 .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
                 .present_mode(vk::PresentModeKHR::FIFO)
                 .clipped(true)
-                .image_array_layers(1);
+                .image_array_layers(1)
+                .old_swapchain(old_swapchain);
+
             self.handle.store(
                 swapchain_loader
                     .create_swapchain(&swapchain_create_info, None)
@@ -1766,6 +1768,9 @@ impl Swapchain {
                     .as_raw(),
                 std::sync::atomic::Ordering::SeqCst,
             );
+            self.device
+                .swapchain_loader
+                .destroy_swapchain(old_swapchain, None);
             self.width.store(
                 surface_capabilities.current_extent.width,
                 std::sync::atomic::Ordering::SeqCst,

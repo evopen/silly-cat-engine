@@ -334,7 +334,11 @@ impl Engine {
     fn resize(&mut self, new_size: &winit::dpi::PhysicalSize<u32>) {
         log::debug!("resizing");
         self.size = new_size.clone();
-        // self.swapchain.renew();
+        self.swapchain.renew();
+        self.swapchain_images = safe_vk::Image::from_swapchain(self.swapchain.clone())
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>();
     }
 
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {

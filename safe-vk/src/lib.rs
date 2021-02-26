@@ -1661,10 +1661,15 @@ pub struct Swapchain {
     height: std::sync::atomic::AtomicU32,
     format: vk::Format,
     image_available_semaphore: BinarySemaphore,
+    present_mode: vk::PresentModeKHR,
 }
 
 impl Swapchain {
-    pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> Self {
+    pub fn new(
+        device: Arc<Device>,
+        surface: Arc<Surface>,
+        present_mode: vk::PresentModeKHR,
+    ) -> Self {
         unsafe {
             let surface_loader = &device.pdevice.instance.surface_loader;
             let surface_capabilities = surface_loader
@@ -1689,7 +1694,7 @@ impl Swapchain {
                 .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
                 .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                .present_mode(vk::PresentModeKHR::FIFO)
+                .present_mode(present_mode)
                 .clipped(true)
                 .image_array_layers(1);
             let handle = device
@@ -1709,6 +1714,7 @@ impl Swapchain {
                 ),
                 format,
                 image_available_semaphore,
+                present_mode,
             }
         }
     }
@@ -1757,7 +1763,7 @@ impl Swapchain {
                 .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
                 .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
                 .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                .present_mode(vk::PresentModeKHR::FIFO)
+                .present_mode(self.present_mode)
                 .clipped(true)
                 .image_array_layers(1)
                 .old_swapchain(old_swapchain);

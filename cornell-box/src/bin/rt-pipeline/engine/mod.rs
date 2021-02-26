@@ -110,7 +110,11 @@ impl Engine {
                 safe_vk::name::device::Extension::KhrRayTracingPipeline,
             ],
         ));
-        let swapchain = Arc::new(safe_vk::Swapchain::new(device.clone(), surface.clone()));
+        let swapchain = Arc::new(safe_vk::Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            vk::PresentModeKHR::IMMEDIATE,
+        ));
         let mut queue = safe_vk::Queue::new(device.clone());
         let allocator = Arc::new(safe_vk::Allocator::new(device.clone()));
         let ui_pass = egui_backend::UiPass::new(allocator.clone());

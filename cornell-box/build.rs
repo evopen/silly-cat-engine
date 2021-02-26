@@ -81,8 +81,8 @@ fn main() -> Result<()> {
     );
     options.set_target_spirv(shaderc::SpirvVersion::V1_5);
     options.set_generate_debug_info();
-    options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-    options.set_include_callback(|requested, ty, source, depth| {
+    // options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    options.set_include_callback(|requested, _, source, _| {
         dbg!(&requested);
         dbg!(&source);
         let source_path = PathBuf::from(source);

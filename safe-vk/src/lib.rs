@@ -41,6 +41,7 @@ pub mod name {
             KhrSurface,
             KhrXlibSurface,
             KhrXcbSurface,
+            KhrDisplay,
         }
 
         impl Into<&'static str> for &Extension {
@@ -51,6 +52,7 @@ pub mod name {
                     Extension::KhrSurface => "VK_KHR_surface",
                     Extension::KhrXlibSurface => "VK_KHR_xlib_surface",
                     Extension::KhrXcbSurface => "VK_KHR_xcb_surface",
+                    Extension::KhrDisplay => "VK_KHR_display",
                 }
             }
         }
@@ -147,6 +149,7 @@ pub struct Instance {
     entry: Arc<Entry>,
     surface_loader: ash::extensions::khr::Surface,
     debug_utils_loader: ash::extensions::ext::DebugUtils,
+    display_loader: ash::extensions::khr::Display,
 }
 
 impl Instance {
@@ -209,11 +212,14 @@ impl Instance {
 
         let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry.handle, &handle);
 
+        let display_loader = ash::extensions::khr::Display::new(&entry.handle, &handle);
+
         let result = Self {
             handle,
             entry,
             surface_loader,
             debug_utils_loader,
+            display_loader,
         };
 
         result

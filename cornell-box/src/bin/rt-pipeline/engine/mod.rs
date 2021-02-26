@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytemuck::cast_slice;
 use camera::Camera;
@@ -23,6 +23,13 @@ struct PushConstants {
     render_width: u32,
     render_height: u32,
     sample_batch: u32,
+}
+
+#[derive(Debug, Clone)]
+struct FpsCounter {
+    update_time: std::time::Instant,
+    fps: f64,
+    sampled_frames: u32,
 }
 
 pub struct Engine {
@@ -45,6 +52,7 @@ pub struct Engine {
     camera: Camera,
     scene: gltf_wrapper::Scene,
     push_constants: PushConstants,
+    fps_counter: FpsCounter,
 }
 
 impl Engine {
@@ -276,6 +284,12 @@ impl Engine {
 
         log::info!("pipeline created");
 
+        let fps_counter = FpsCounter {
+            update_time: Instant::now(),
+            fps: 0.0,
+            sampled_frames: 0,
+        };
+
         Self {
             ui_platform,
             size,
@@ -296,6 +310,7 @@ impl Engine {
             camera,
             scene,
             push_constants,
+            fps_counter,
         }
     }
 
@@ -459,6 +474,7 @@ impl Engine {
                         }
                     }
                 });
+                ui.label(format!("FPS: {:.1}", self.fps_counter.fps));
             });
         });
 
@@ -630,6 +646,16 @@ impl Engine {
             &[&self.render_finish_semaphore],
         );
         self.queue
-            .present(&self.swapchain, index, &[&self.render_finish_semaphore])
+            .present(&self.swapchain, index, &[&self.render_finish_semaphore]);
+
+        let now = Instant::now();
+        let frame_time = now - self.fps_counter.update_time;
+        self.fps_counter.sampled_frames += 1;
+        if frame_time > Duration::from_millis(500) {
+            self.fps_counter.fps = Duration::from_secs(1).as_secs_f64()
+                / (frame_time.as_secs_f64() / self.fps_counter.sampled_frames as f64);
+            self.fps_counter.update_time = now;
+            self.fps_counter.sampled_frames = 0;
+        }
     }
 }

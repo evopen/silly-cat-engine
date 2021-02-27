@@ -112,7 +112,7 @@ void main()
         pixel_color = summed_pixel_color / SAMPLE_COUNT;
     }
 
-    vec3 tone_mapped_color = ACESToneMapping(pixel_color, 3);
+    vec3 tone_mapped_color = ACESToneMapping(pixel_color, 1.5);
 
     imageStore(storage_image, ivec2(pixel), vec4(pixel_color, 1.0));
     imageStore(tone_mapped_image, ivec2(pixel), vec4(tone_mapped_color, 1.0));

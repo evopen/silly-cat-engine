@@ -81,7 +81,7 @@ fn main() -> Result<()> {
     );
     options.set_target_spirv(shaderc::SpirvVersion::V1_5);
     options.set_generate_debug_info();
-    // options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    options.set_optimization_level(shaderc::OptimizationLevel::Performance);
     options.set_include_callback(|requested, _, source, _| {
         dbg!(&requested);
         dbg!(&source);

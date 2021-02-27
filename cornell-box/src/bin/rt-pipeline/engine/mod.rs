@@ -52,6 +52,7 @@ pub struct Engine {
     scene: gltf_wrapper::Scene,
     push_constants: PushConstants,
     fps_counter: FpsCounter,
+    sample_speed: f64,
 }
 
 impl Engine {
@@ -341,6 +342,7 @@ impl Engine {
             scene,
             push_constants,
             fps_counter,
+            sample_speed: 0.0,
         }
     }
 
@@ -533,6 +535,8 @@ impl Engine {
                     }
                 });
                 ui.label(format!("FPS: {:.1}", self.fps_counter.fps));
+                ui.label(format!("Samples: {}", self.push_constants.sample_count));
+                ui.label(format!("Sample Speed: {:.1}", self.sample_speed));
             });
         });
 
@@ -714,6 +718,13 @@ impl Engine {
                 / (frame_time.as_secs_f64() / self.fps_counter.sampled_frames as f64);
             self.fps_counter.update_time = now;
             self.fps_counter.sampled_frames = 0;
+            self.sample_speed =
+                self.fps_counter.fps * self.push_constants.batch_sample_count as f64;
+            if self.fps_counter.fps > 140.0 {
+                self.push_constants.batch_sample_count *= 2;
+            } else if self.fps_counter.fps < 70.0 {
+                self.push_constants.batch_sample_count /= 2;
+            }
         }
     }
 }

@@ -43,6 +43,8 @@ vec3 ACESToneMapping(vec3 color, float adapted_lum)
 
 void main()
 {
+    debugPrintfEXT("rt\n");
+
     const uvec2 resolution = imageSize(storage_image);
     const uvec2 pixel = uvec2(gl_LaunchIDEXT.xy);
 

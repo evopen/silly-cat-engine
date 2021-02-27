@@ -14,15 +14,13 @@ use vk::CommandBuffer;
 
 use bytemuck::{Pod, Zeroable};
 
-const WORKGROUP_WIDTH: u32 = 16;
-const WORKGROUP_HEIGHT: u32 = 8;
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct PushConstants {
     render_width: u32,
     render_height: u32,
-    sample_batch: u32,
+    sample_count: u32,
+    batch_sample_count: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +46,7 @@ pub struct Engine {
     pipeline: Arc<safe_vk::RayTracingPipeline>,
     descriptor_set: Arc<safe_vk::DescriptorSet>,
     result_image: Arc<safe_vk::Image>,
+    tone_mapped_image: Arc<safe_vk::Image>,
     uniform_buffer: Arc<safe_vk::Buffer>,
     camera: Camera,
     scene: gltf_wrapper::Scene,
@@ -151,6 +150,11 @@ impl Engine {
                     descriptor_type: safe_vk::DescriptorType::StorageBuffer,
                     stage_flags: vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                 },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 4,
+                    descriptor_type: safe_vk::DescriptorType::StorageImage,
+                    stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
+                },
             ],
         ));
 
@@ -178,11 +182,27 @@ impl Engine {
             safe_vk::MemoryUsage::GpuOnly,
         );
 
+        let mut tone_mapped_image = safe_vk::Image::new(
+            Some("tone mapped image"),
+            allocator.clone(),
+            vk::Format::R32G32B32A32_SFLOAT,
+            swapchain.width(),
+            swapchain.height(),
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::TRANSFER_SRC,
+            safe_vk::MemoryUsage::GpuOnly,
+        );
+
         result_image.set_layout(vk::ImageLayout::GENERAL, &mut queue, command_pool.clone());
+        tone_mapped_image.set_layout(vk::ImageLayout::GENERAL, &mut queue, command_pool.clone());
 
         let result_image = Arc::new(result_image);
+        let tone_mapped_image = Arc::new(tone_mapped_image);
 
         let result_image_view = Arc::new(safe_vk::ImageView::new(result_image.clone()));
+        let tone_mapped_image_view = Arc::new(safe_vk::ImageView::new(tone_mapped_image.clone()));
 
         let mut descriptor_set = safe_vk::DescriptorSet::new(
             Some("Main descriptor set"),
@@ -235,6 +255,10 @@ impl Engine {
                     offset: scene.sole_geometry_vertex_buffer_offset(),
                 },
             },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 4,
+                detail: safe_vk::DescriptorSetUpdateDetail::Image(tone_mapped_image_view.clone()),
+            },
         ]);
 
         let descriptor_set = Arc::new(descriptor_set);
@@ -283,7 +307,8 @@ impl Engine {
         let push_constants = PushConstants {
             render_width: size.width,
             render_height: size.height,
-            sample_batch: 0,
+            sample_count: 0,
+            batch_sample_count: 1,
         };
 
         log::info!("pipeline created");
@@ -310,6 +335,7 @@ impl Engine {
             pipeline,
             descriptor_set,
             result_image,
+            tone_mapped_image,
             uniform_buffer,
             camera,
             scene,
@@ -368,21 +394,49 @@ impl Engine {
             safe_vk::MemoryUsage::GpuOnly,
         );
 
+        let mut tone_mapped_image = safe_vk::Image::new(
+            Some("result image"),
+            self.allocator.clone(),
+            vk::Format::R32G32B32A32_SFLOAT,
+            self.swapchain.width(),
+            self.swapchain.height(),
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::STORAGE
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::TRANSFER_SRC,
+            safe_vk::MemoryUsage::GpuOnly,
+        );
+
         result_image.set_layout(
             vk::ImageLayout::GENERAL,
             &mut self.queue,
             self.command_pool.clone(),
         );
 
+        tone_mapped_image.set_layout(
+            vk::ImageLayout::GENERAL,
+            &mut self.queue,
+            self.command_pool.clone(),
+        );
+
         self.result_image = Arc::new(result_image);
+        self.tone_mapped_image = Arc::new(tone_mapped_image);
 
         let result_image_view = Arc::new(safe_vk::ImageView::new(self.result_image.clone()));
-        self.descriptor_set
-            .update(&[safe_vk::DescriptorSetUpdateInfo {
+        let tone_mapped_image_view =
+            Arc::new(safe_vk::ImageView::new(self.tone_mapped_image.clone()));
+        self.descriptor_set.update(&[
+            safe_vk::DescriptorSetUpdateInfo {
                 binding: 0,
                 detail: safe_vk::DescriptorSetUpdateDetail::Image(result_image_view.clone()),
-            }]);
-        self.push_constants.sample_batch = 0;
+            },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 4,
+                detail: safe_vk::DescriptorSetUpdateDetail::Image(tone_mapped_image_view.clone()),
+            },
+        ]);
+
+        self.push_constants.sample_count = 0;
     }
 
     pub fn handle_event(&mut self, event: &winit::event::Event<()>) {
@@ -523,8 +577,6 @@ impl Engine {
         let mut sbt_callable_region = sbt_ray_gen_region;
         sbt_callable_region.size = 0;
 
-        self.push_constants.sample_batch += 1;
-
         command_buffer.encode(|recorder| {
             // recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
             //     rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
@@ -589,7 +641,7 @@ impl Engine {
             // );
 
             recorder.blit_image(
-                self.result_image.clone(),
+                self.tone_mapped_image.clone(),
                 target_image.clone(),
                 &[vk::ImageBlit::builder()
                     .src_subresource(
@@ -651,6 +703,8 @@ impl Engine {
         );
         self.queue
             .present(&self.swapchain, index, &[&self.render_finish_semaphore]);
+
+        self.push_constants.sample_count += self.push_constants.batch_sample_count;
 
         let now = Instant::now();
         let frame_time = now - self.fps_counter.update_time;

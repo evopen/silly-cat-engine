@@ -14,7 +14,7 @@ egui_winit_platform = "0.4.0"
 winit = "0.24.0"
 egui = "0.8.0"
 nfd2 = "0.2.3"
-gltf-wrapper = { path = "../gltf-wrapper" }
+# gltf-wrapper = { path = "../gltf-wrapper" }
 rust-embed= "5.9.0"
 image = "0.23.13"
 bytemuck = { version = "1.5.0", features = ["derive"] }
@@ -22,6 +22,8 @@ env_logger = "0.8.3"
 log = "0.4.14"
 camera = { path = "../camera" }
 glam = { version = "0.12.0", features = ["bytemuck"] }
+gltf = "0.15.2"
+
 
 
 [build-dependencies]

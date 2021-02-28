@@ -347,7 +347,7 @@ dependencies = [
  "env_logger",
  "glam",
  "glob",
- "gltf-wrapper",
+ "gltf",
  "image",
  "log",
  "nfd2",

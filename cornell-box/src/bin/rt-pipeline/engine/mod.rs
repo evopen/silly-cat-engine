@@ -14,6 +14,10 @@ use vk::CommandBuffer;
 
 use bytemuck::{Pod, Zeroable};
 
+mod scene;
+
+use scene::Scene;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct PushConstants {
@@ -49,7 +53,7 @@ pub struct Engine {
     tone_mapped_image: Arc<safe_vk::Image>,
     uniform_buffer: Arc<safe_vk::Buffer>,
     camera: Camera,
-    scene: gltf_wrapper::Scene,
+    scene: Scene,
     push_constants: PushConstants,
     fps_counter: FpsCounter,
     sample_speed: f64,
@@ -218,10 +222,7 @@ impl Engine {
             descriptor_set_layout.clone(),
         );
 
-        let scene = gltf_wrapper::Scene::from_file(
-            allocator.clone(),
-            "./cornell-box/models/CornellBox.glb",
-        );
+        let scene = Scene::from_file(allocator.clone(), "./cornell-box/models/CornellBox.glb");
 
         let uniform_buffer = Arc::new(safe_vk::Buffer::new(
             Some("camera buffer"),
@@ -722,7 +723,7 @@ impl Engine {
                 self.fps_counter.fps * self.push_constants.batch_sample_count as f64;
             if self.fps_counter.fps > 140.0 {
                 self.push_constants.batch_sample_count *= 2;
-            } else if self.fps_counter.fps < 70.0 {
+            } else if self.fps_counter.fps < 70.0 && self.push_constants.batch_sample_count > 1 {
                 self.push_constants.batch_sample_count /= 2;
             }
         }

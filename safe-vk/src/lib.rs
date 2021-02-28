@@ -1350,6 +1350,17 @@ pub struct CommandRecorder<'a> {
 }
 
 impl<'a> CommandRecorder<'a> {
+    pub fn update_buffer(&mut self, buffer: Arc<Buffer>, offset: u64, data: &[u8]) {
+        unsafe {
+            self.device().handle.cmd_update_buffer(
+                self.command_buffer.handle,
+                buffer.handle,
+                offset,
+                data,
+            );
+        }
+        self.command_buffer.resources.push(buffer);
+    }
     pub fn copy_buffer(&mut self, src: Arc<Buffer>, dst: Arc<Buffer>, region: &[vk::BufferCopy]) {
         unsafe {
             self.copy_buffer_raw(src.as_ref(), dst.as_ref(), region);

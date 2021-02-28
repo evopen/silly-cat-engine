@@ -10,12 +10,11 @@ layout(binding = 0, set = 0, rgba32f) uniform image2D storage_image;
 layout(binding = 4, set = 0, rgba32f) uniform image2D tone_mapped_image;
 layout(binding = 1, set = 0) uniform accelerationStructureEXT tlas;
 
-// layout(binding = 2, set = 0) uniform Camera
-// {
-//     vec3 origin;
-//     vec3 dir;
-// }
-// camera;
+layout(binding = 5, set = 0) uniform Camera
+{
+    vec3 origin;
+}
+camera;
 
 struct PushConstants {
     uint render_width;
@@ -62,7 +61,7 @@ void main()
     // This scene uses a right-handed coordinate system like the OBJ file format, where the
     // +x axis points right, the +y axis points up, and the -z axis points into the screen.
     // The camera is located at (-0.001, 0, 53).
-    const vec3 camera_origin = vec3(-0.001, 0, 53);
+    const vec3 camera_origin = camera.origin;
     // Define the field of view by the vertical slope of the topmost rays:
     const float fovVerticalSlope = 1.0 / 5.0;
 

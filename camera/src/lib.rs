@@ -200,23 +200,24 @@ impl Camera {
     }
 
     fn update(&mut self) {
+        let speed = 0.01;
         if self.key_pressed.w {
-            self.process_keyboard(Direction::Forward, 0.1);
+            self.process_keyboard(Direction::Forward, speed);
         }
         if self.key_pressed.s {
-            self.process_keyboard(Direction::Backward, 0.1);
+            self.process_keyboard(Direction::Backward, speed);
         }
         if self.key_pressed.a {
-            self.process_keyboard(Direction::Left, 0.1);
+            self.process_keyboard(Direction::Left, speed);
         }
         if self.key_pressed.d {
-            self.process_keyboard(Direction::Right, 0.1);
+            self.process_keyboard(Direction::Right, speed);
         }
         if self.key_pressed.q {
-            self.process_keyboard(Direction::Down, 0.1);
+            self.process_keyboard(Direction::Down, speed);
         }
         if self.key_pressed.e {
-            self.process_keyboard(Direction::Up, 0.1);
+            self.process_keyboard(Direction::Up, speed);
         }
     }
 
@@ -249,9 +250,10 @@ impl Camera {
         }
     }
 
-    pub fn camera_uniform(&mut self) -> &CameraUniform {
-        self.camera_uniform.origin = self.position.into();
-        &self.camera_uniform
+    pub fn camera_uniform(&self) -> CameraUniform {
+        CameraUniform {
+            origin: self.position.into(),
+        }
     }
 
     fn update_vectors(&mut self) {
@@ -263,5 +265,9 @@ impl Camera {
         .normalize();
         self.right = self.front.cross(self.world_up).normalize();
         self.up = self.right.cross(self.front).normalize();
+    }
+
+    pub fn position(&self) -> glam::Vec3A {
+        self.position
     }
 }

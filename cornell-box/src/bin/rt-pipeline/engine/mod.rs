@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bytemuck::cast_slice;
-use camera::Camera;
+use camera::{Camera, CameraUniform};
 use image::ImageBuffer;
 use safe_vk::{vk, PipelineRecorder};
 use vk::CommandBuffer;
@@ -57,6 +57,7 @@ pub struct Engine {
     push_constants: PushConstants,
     fps_counter: FpsCounter,
     sample_speed: f64,
+    old_camera_position: glam::Vec3A,
 }
 
 impl Engine {
@@ -160,6 +161,11 @@ impl Engine {
                     descriptor_type: safe_vk::DescriptorType::StorageImage,
                     stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
                 },
+                safe_vk::DescriptorSetLayoutBinding {
+                    binding: 5,
+                    descriptor_type: safe_vk::DescriptorType::UniformBuffer,
+                    stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
+                },
             ],
         ));
 
@@ -261,6 +267,13 @@ impl Engine {
                 binding: 4,
                 detail: safe_vk::DescriptorSetUpdateDetail::Image(tone_mapped_image_view.clone()),
             },
+            safe_vk::DescriptorSetUpdateInfo {
+                binding: 5,
+                detail: safe_vk::DescriptorSetUpdateDetail::Buffer {
+                    buffer: uniform_buffer.clone(),
+                    offset: 0,
+                },
+            },
         ]);
 
         let descriptor_set = Arc::new(descriptor_set);
@@ -334,7 +347,7 @@ impl Engine {
         ));
 
         let camera = camera::Camera::new(
-            glam::Vec3A::new(-0.001, 0.0, 3.0),
+            glam::Vec3A::new(-0.001, 0.0, 53.0),
             glam::Vec3A::new(0.0, 0.0, 0.0),
         );
 
@@ -352,6 +365,8 @@ impl Engine {
             fps: 0.0,
             sampled_frames: 0,
         };
+
+        let old_camera_position = camera.position();
 
         Self {
             ui_platform,
@@ -376,6 +391,7 @@ impl Engine {
             push_constants,
             fps_counter,
             sample_speed: 0.0,
+            old_camera_position,
         }
     }
 
@@ -586,9 +602,18 @@ impl Engine {
         self.ui_pass
             .update_texture(&self.ui_platform.context().texture());
 
-        self.uniform_buffer.copy_from(bytemuck::cast_slice(
-            self.camera.camera_uniform().origin.as_ref(),
-        ));
+        // self.uniform_buffer.copy_from(bytemuck::cast_slice(
+        //     self.camera.camera_uniform().origin.as_ref(),
+        // ));
+
+        if !self
+            .old_camera_position
+            .abs_diff_eq(self.camera.position(), std::f32::EPSILON)
+        {
+            println!("here");
+            self.push_constants.sample_count = 0;
+            self.old_camera_position = self.camera.position();
+        }
     }
 
     pub fn render(&mut self) {
@@ -615,6 +640,11 @@ impl Engine {
         sbt_callable_region.size = 0;
 
         command_buffer.encode(|recorder| {
+            recorder.update_buffer(
+                self.uniform_buffer.clone(),
+                0,
+                bytemuck::cast_slice(&[self.camera.camera_uniform()]),
+            );
             // recorder.bind_compute_pipeline(self.pipeline.clone(), |rec, pipeline| {
             //     rec.bind_descriptor_sets(vec![self.descriptor_set.clone()], pipeline.layout(), 0);
 

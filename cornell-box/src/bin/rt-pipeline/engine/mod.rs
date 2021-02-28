@@ -298,6 +298,30 @@ impl Engine {
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                 "main",
             )),
+            Arc::new(safe_vk::ShaderStage::new(
+                Arc::new(safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("closest_hit_2.rchit.spv").unwrap(),
+                )),
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                "main",
+            )),
+            Arc::new(safe_vk::ShaderStage::new(
+                Arc::new(safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("closest_hit_3.rchit.spv").unwrap(),
+                )),
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                "main",
+            )),
+            Arc::new(safe_vk::ShaderStage::new(
+                Arc::new(safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("closest_hit_4.rchit.spv").unwrap(),
+                )),
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                "main",
+            )),
         ];
 
         let pipeline = Arc::new(safe_vk::RayTracingPipeline::new(

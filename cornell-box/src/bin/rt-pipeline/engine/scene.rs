@@ -272,8 +272,8 @@ impl Scene {
         let mut arr = Vec::new();
 
         if let Some(mesh) = node.mesh() {
-            for x in (-10..=10) {
-                for y in (-10..=10) {
+            for x in -10..=10 {
+                for y in -10..=10 {
                     let transform = Mat4::from_translation(vec3(x as f32, y as f32, 0.0))
                         * Mat4::from_scale(Vec3::splat(1.0 / 2.7))
                         * Mat4::from_rotation_ypr(
@@ -287,7 +287,9 @@ impl Scene {
                             matrix: transform.transpose().as_ref()[..12].try_into().unwrap(),
                         },
                         instance_custom_index_and_mask: 0 | (0xFF << 24),
-                        instance_shader_binding_table_record_offset_and_flags: 0 | (0x01 << 24),
+                        instance_shader_binding_table_record_offset_and_flags: rng.gen_range(0..=1)
+                            | (vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw()
+                                << 24),
                         acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
                             device_handle: meshes[mesh.index()].blas.device_address(),
                         },

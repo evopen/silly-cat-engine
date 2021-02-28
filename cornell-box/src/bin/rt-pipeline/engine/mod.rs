@@ -285,7 +285,15 @@ impl Engine {
             Arc::new(safe_vk::ShaderStage::new(
                 Arc::new(safe_vk::ShaderModule::new(
                     device.clone(),
-                    shaders::Shaders::get("closest_hit.rchit.spv").unwrap(),
+                    shaders::Shaders::get("closest_hit_0.rchit.spv").unwrap(),
+                )),
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                "main",
+            )),
+            Arc::new(safe_vk::ShaderStage::new(
+                Arc::new(safe_vk::ShaderModule::new(
+                    device.clone(),
+                    shaders::Shaders::get("closest_hit_1.rchit.spv").unwrap(),
                 )),
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                 "main",

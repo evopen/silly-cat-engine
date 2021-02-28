@@ -1,8 +1,10 @@
 use std::convert::TryInto;
+use std::f32::consts::FRAC_PI_6;
 use std::path::Path;
 use std::sync::Arc;
 
-use glam::vec3;
+use glam::{vec3, Mat4, Vec3};
+use rand::{Rng, SeedableRng};
 use safe_vk::vk;
 
 struct Geometry {
@@ -261,48 +263,54 @@ impl Scene {
         queue: &mut safe_vk::Queue,
         command_pool: Arc<safe_vk::CommandPool>,
     ) -> Vec<safe_vk::Buffer> {
-        let mut transform = glam::Mat4::from_cols_array_2d(&node.transform().matrix()).transpose();
-        transform.x_axis[3] = -1.5;
+        let orig_transform = Mat4::from_cols_array_2d(&node.transform().matrix());
+        dbg!(&orig_transform);
+        let center_transform = Mat4::from_translation(vec3(0.0, -1.0, 0.0)) * orig_transform; // fix it to center
 
-        let mut arr = node
-            .children()
-            .map(|node| {
-                Self::process_node(node, meshes, allocator.clone(), queue, command_pool.clone())
-            })
-            .flatten()
-            .collect::<Vec<_>>();
+        let mut rng = rand::rngs::SmallRng::from_entropy();
+
+        let mut arr = Vec::new();
 
         if let Some(mesh) = node.mesh() {
-            let instance = vk::AccelerationStructureInstanceKHR {
-                transform: vk::TransformMatrixKHR {
-                    matrix: transform.as_ref()[..12].try_into().unwrap(),
-                },
-                instance_custom_index_and_mask: 0 | (0xFF << 24),
-                instance_shader_binding_table_record_offset_and_flags: 0 | (0x01 << 24),
-                acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                    device_handle: meshes[mesh.index()].blas.device_address(),
-                },
-            };
-
-            let data = unsafe {
-                std::slice::from_raw_parts(
-                    std::mem::transmute(&instance),
-                    std::mem::size_of::<vk::AccelerationStructureInstanceKHR>(),
-                )
-            };
-
-            let instance_buffer = safe_vk::Buffer::new_init_device(
-                Some("instance buffer"),
-                allocator.clone(),
-                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                    | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-                safe_vk::MemoryUsage::GpuOnly,
-                queue,
-                command_pool.clone(),
-                data,
-            );
-
-            arr.push(instance_buffer);
+            for x in (-10..=10) {
+                for y in (-10..=10) {
+                    let transform = Mat4::from_translation(vec3(x as f32, y as f32, 0.0))
+                        * Mat4::from_scale(Vec3::splat(1.0 / 2.7))
+                        * Mat4::from_rotation_ypr(
+                            rng.gen_range(-0.5..=0.5),
+                            rng.gen_range(-0.5..=0.5),
+                            0.0,
+                        )
+                        * center_transform;
+                    let instance = vk::AccelerationStructureInstanceKHR {
+                        transform: vk::TransformMatrixKHR {
+                            matrix: transform.transpose().as_ref()[..12].try_into().unwrap(),
+                        },
+                        instance_custom_index_and_mask: 0 | (0xFF << 24),
+                        instance_shader_binding_table_record_offset_and_flags: 0 | (0x01 << 24),
+                        acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+                            device_handle: meshes[mesh.index()].blas.device_address(),
+                        },
+                    };
+                    let data = unsafe {
+                        std::slice::from_raw_parts(
+                            std::mem::transmute(&instance),
+                            std::mem::size_of::<vk::AccelerationStructureInstanceKHR>(),
+                        )
+                    };
+                    let instance_buffer = safe_vk::Buffer::new_init_device(
+                        Some("instance buffer"),
+                        allocator.clone(),
+                        vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                            | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+                        safe_vk::MemoryUsage::GpuOnly,
+                        queue,
+                        command_pool.clone(),
+                        data,
+                    );
+                    arr.push(instance_buffer);
+                }
+            }
         }
         arr
     }

@@ -230,7 +230,7 @@ impl Engine {
 
         let scene = Scene::from_file(
             allocator.clone(),
-            "./minecraft/models/basic-blocks/basic-blocks.glb",
+            "./minecraft/models/basic-blocks/basic-blocks.gltf",
         );
 
         let uniform_buffer = Arc::new(safe_vk::Buffer::new(

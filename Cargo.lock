@@ -1021,6 +1021,27 @@ dependencies = [
 [[package]]
 name = "minecraft"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "camera",
+ "egui",
+ "egui-backend",
+ "egui_winit_platform",
+ "env_logger",
+ "glam",
+ "glob",
+ "gltf",
+ "image",
+ "log",
+ "nfd2",
+ "rand",
+ "rust-embed",
+ "safe-vk",
+ "shaderc",
+ "tokio",
+ "winit",
+]
 
 [[package]]
 name = "miniz_oxide"

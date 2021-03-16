@@ -1,11 +1,12 @@
 use std::convert::TryInto;
 use std::f32::consts::FRAC_PI_6;
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
 use glam::{vec3, Mat4, Vec3};
 use rand::{Rng, SeedableRng};
-use safe_vk::vk;
+use safe_vk::{vk, MemoryUsage};
 
 struct Geometry {
     index_type: vk::IndexType,
@@ -59,29 +60,49 @@ impl Scene {
         let images = gltf_images
             .iter()
             .map(|image| {
-                let format = match image.format {
-                    gltf::image::Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
-                    gltf::image::Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
-                    gltf::image::Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
-                    gltf::image::Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
+                match image.format {
+                    gltf::image::Format::R8G8B8 => {
+                        let mut rgba_data: Vec<u8> =
+                            Vec::with_capacity((image.width * image.height * 4) as usize);
+                        for i in 0..image.pixels.len() {
+                            rgba_data.push(image.pixels[i]);
+                            if (i + 1) % 3 == 0 {
+                                rgba_data.push(std::u8::MAX);
+                            }
+                        }
+                        safe_vk::Image::new_init_host(
+                            Some("gltf texture"),
+                            allocator.clone(),
+                            vk::Format::R8G8B8A8_UNORM,
+                            image.width,
+                            image.height,
+                            vk::ImageTiling::LINEAR,
+                            vk::ImageUsageFlags::SAMPLED,
+                            safe_vk::MemoryUsage::CpuToGpu,
+                            &mut queue,
+                            command_pool.clone(),
+                            &rgba_data,
+                        )
+                    }
+                    gltf::image::Format::R8G8B8A8 => {
+                        safe_vk::Image::new_init_host(
+                            Some("gltf texture"),
+                            allocator.clone(),
+                            vk::Format::R8G8B8A8_UNORM,
+                            image.width,
+                            image.height,
+                            vk::ImageTiling::OPTIMAL,
+                            vk::ImageUsageFlags::SAMPLED,
+                            safe_vk::MemoryUsage::CpuToGpu,
+                            &mut queue,
+                            command_pool.clone(),
+                            &image.pixels,
+                        )
+                    }
                     _ => {
                         unimplemented!()
                     }
                 };
-
-                safe_vk::Image::new_init_host(
-                    Some("gltf texture"),
-                    allocator.clone(),
-                    format,
-                    image.width,
-                    image.height,
-                    vk::ImageTiling::OPTIMAL,
-                    vk::ImageUsageFlags::SAMPLED,
-                    safe_vk::MemoryUsage::CpuToGpu,
-                    &mut queue,
-                    command_pool.clone(),
-                    &image.pixels,
-                )
             })
             .collect::<Vec<_>>();
 
@@ -262,55 +283,42 @@ impl Scene {
         command_pool: Arc<safe_vk::CommandPool>,
     ) -> Vec<safe_vk::Buffer> {
         let orig_transform = Mat4::from_cols_array_2d(&node.transform().matrix());
-        dbg!(&orig_transform);
-        let center_transform = Mat4::from_translation(vec3(0.0, -1.0, 0.0)) * orig_transform; // fix it to center
 
         let mut rng = rand::rngs::SmallRng::from_entropy();
 
         let mut arr = Vec::new();
 
         if let Some(mesh) = node.mesh() {
-            for x in -10..=10 {
-                for y in -10..=10 {
-                    let transform = Mat4::from_translation(vec3(x as f32, y as f32, 0.0))
-                        * Mat4::from_scale(Vec3::splat(1.0 / 2.7))
-                        * Mat4::from_rotation_ypr(
-                            rng.gen_range(-0.5..=0.5),
-                            rng.gen_range(-0.5..=0.5),
-                            0.0,
-                        )
-                        * center_transform;
-                    let instance = vk::AccelerationStructureInstanceKHR {
-                        transform: vk::TransformMatrixKHR {
-                            matrix: transform.transpose().as_ref()[..12].try_into().unwrap(),
-                        },
-                        instance_custom_index_and_mask: 0 | (0xFF << 24),
-                        instance_shader_binding_table_record_offset_and_flags: rng.gen_range(0..=4)
-                            | (vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw()
-                                << 24),
-                        acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                            device_handle: meshes[mesh.index()].blas.device_address(),
-                        },
-                    };
-                    let data = unsafe {
-                        std::slice::from_raw_parts(
-                            std::mem::transmute(&instance),
-                            std::mem::size_of::<vk::AccelerationStructureInstanceKHR>(),
-                        )
-                    };
-                    let instance_buffer = safe_vk::Buffer::new_init_device(
-                        Some("instance buffer"),
-                        allocator.clone(),
-                        vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                            | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-                        safe_vk::MemoryUsage::GpuOnly,
-                        queue,
-                        command_pool.clone(),
-                        data,
-                    );
-                    arr.push(instance_buffer);
-                }
-            }
+            let instance = vk::AccelerationStructureInstanceKHR {
+                transform: vk::TransformMatrixKHR {
+                    matrix: orig_transform.transpose().as_ref()[..12]
+                        .try_into()
+                        .unwrap(),
+                },
+                instance_custom_index_and_mask: 0 | (0xFF << 24),
+                instance_shader_binding_table_record_offset_and_flags: rng.gen_range(0..=4)
+                    | (vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() << 24),
+                acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+                    device_handle: meshes[mesh.index()].blas.device_address(),
+                },
+            };
+            let data = unsafe {
+                std::slice::from_raw_parts(
+                    std::mem::transmute(&instance),
+                    std::mem::size_of::<vk::AccelerationStructureInstanceKHR>(),
+                )
+            };
+            let instance_buffer = safe_vk::Buffer::new_init_device(
+                Some("instance buffer"),
+                allocator.clone(),
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+                safe_vk::MemoryUsage::GpuOnly,
+                queue,
+                command_pool.clone(),
+                data,
+            );
+            arr.push(instance_buffer);
         }
         arr
     }
@@ -325,13 +333,9 @@ impl Scene {
     }
 
     pub fn sole_geometry_index_buffer_offset(&self) -> u64 {
-        assert_eq!(self.meshes.len(), 1);
-        assert_eq!(self.meshes[0].geometries.len(), 1);
         self.meshes[0].geometries[0].index_buffer_offset
     }
     pub fn sole_geometry_vertex_buffer_offset(&self) -> u64 {
-        assert_eq!(self.meshes.len(), 1);
-        assert_eq!(self.meshes[0].geometries.len(), 1);
         self.meshes[0].geometries[0].vertex_buffer_offset
     }
 }

@@ -15,6 +15,6 @@ members = [
 
 
 [patch.crates-io]
-ash = { git = "https://github.com/MaikKlein/ash", branch = "master" }
-ash-window = { git = "https://github.com/MaikKlein/ash", branch = "master" }
+# ash = { git = "https://github.com/MaikKlein/ash", branch = "master" }
+# ash-window = { git = "https://github.com/MaikKlein/ash", branch = "master" }
 vk-mem = { git = "https://github.com/evopen/vk-mem-rs.git", branch = "master" }

@@ -7,18 +7,18 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.38"
-ash = "0.31.0"
-ash-window = "0.5.0"
+anyhow = "1.0.40"
+ash = "0.32.1"
+ash-window = "0.6.0"
 petgraph = "0.5.1"
 raw-window-handle = "0.3.3"
 vk-mem = { version = "0.2.2", features = ["link_vulkan"] }
 num-traits = "0.2.14"
-tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
-bytemuck = { version = "1.5.0", features = ["derive"] }
-log = "*"
+tokio = { version = "1.5.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
+bytemuck = { version = "1.5.1", features = ["derive"] }
+log = "0.4.14"
 
 [dev-dependencies]
 winit = "0.24.0"
-bytemuck = { version = "1.5.0", features = ["derive"] }
+bytemuck = { version = "1.5.1", features = ["derive"] }
 

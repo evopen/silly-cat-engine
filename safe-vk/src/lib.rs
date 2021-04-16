@@ -91,7 +91,7 @@ pub struct Entry {
 
 impl Entry {
     pub fn new() -> Result<Self> {
-        let handle = ash::Entry::new()?;
+        let handle = unsafe { ash::Entry::new()? };
 
         let result = Self { handle };
 
@@ -3165,7 +3165,6 @@ impl AccelerationStructure {
                 .device
                 .acceleration_structure_loader
                 .get_acceleration_structure_build_sizes(
-                    allocator.device.handle.handle(),
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &vk::AccelerationStructureBuildGeometryInfoKHR::builder()
                         .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
@@ -3255,7 +3254,6 @@ impl AccelerationStructure {
             let device_address = device
                 .acceleration_structure_loader
                 .get_acceleration_structure_device_address(
-                    device.handle.handle(),
                     &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
                         .acceleration_structure(handle)
                         .build(),

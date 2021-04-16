@@ -9,26 +9,26 @@ edition = "2018"
 [dependencies]
 safe-vk = { path = "../safe-vk" }
 egui-backend = { path = "../egui-backend" }
-tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
-egui_winit_platform = "0.4.0"
+tokio = { version = "1.5.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
+egui_winit_platform = "0.5.0"
 winit = "0.24.0"
-egui = "0.8.0"
-nfd2 = "0.2.3"
+egui = "0.11.0"
+nfd2 = "0.3.0"
 # gltf-wrapper = { path = "../gltf-wrapper" }
 rust-embed= "5.9.0"
-image = "0.23.13"
-bytemuck = { version = "1.5.0", features = ["derive"] }
+image = "0.23.14"
+bytemuck = { version = "1.5.1", features = ["derive"] }
 env_logger = "0.8.3"
 log = "0.4.14"
 camera = { path = "../camera" }
-glam = { version = "0.12.0", features = ["bytemuck"] }
+glam = { version = "0.14.0", features = ["bytemuck"] }
 gltf = "0.15.2"
 rand = { version = "0.8.3", features = ["small_rng"] }
 
 
 [build-dependencies]
-shaderc = "0.7.1"
-anyhow = "1.0.38"
+shaderc = "0.7.2"
+anyhow = "1.0.40"
 glob = "0.3.0"
 
 [[bin]]

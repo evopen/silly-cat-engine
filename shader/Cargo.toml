@@ -10,6 +10,6 @@ edition = "2018"
 rust-embed= "5.9.0"
 
 [build-dependencies]
-shaderc = "0.7.1"
-anyhow = "1.0.38"
+shaderc = "0.7.2"
+anyhow = "1.0.40"
 glob = "0.3.0"

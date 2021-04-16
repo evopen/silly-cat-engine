@@ -8,29 +8,26 @@ edition = "2018"
 
 [dependencies]
 winit = "0.24.0"
-tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process"] }
-glam = { version = "0.12.0", features = ["bytemuck"] }
-futures = "0.3.12"
-bytemuck = { version = "1.5.0", features = ["derive"] }
+tokio = { version = "1.5.0", features = ["rt", "rt-multi-thread", "net", "process"] }
+glam = { version = "0.14.0", features = ["bytemuck"] }
+futures = "0.3.14"
+bytemuck = { version = "1.5.1", features = ["derive"] }
 rayon = "1.5.0"
 rand_xorshift = "0.3.0"
-rand_core = "0.6.1"
-anyhow = "1.0.38"
+rand_core = "0.6.2"
+anyhow = "1.0.40"
 fern = "0.6.0"
 log = "0.4.14"
 chrono = "0.4.19"
-egui = "0.8.0"
-nfd2 = "0.2.3"
+egui = "0.11.0"
+nfd2 = "0.3.0"
 gltf = "0.15.2"
-ash = "0.31.0"
-ash-window = "0.5.0"
-vk-mem = { version = "0.2.2", features = ["link_vulkan"] }
 # gpu-allocator = "0.4.0"
 rust-embed= "5.9.0"
 num-traits = "0.2.14"
-byteorder = "1.4.2"
+byteorder = "1.4.3"
 
 [build-dependencies]
-shaderc = "0.7.1"
-anyhow = "1.0.38"
+shaderc = "0.7.2"
+anyhow = "1.0.40"
 glob = "0.3.0"

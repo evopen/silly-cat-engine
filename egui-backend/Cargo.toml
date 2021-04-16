@@ -9,16 +9,16 @@ edition = "2018"
 [dependencies]
 rust-embed= "5.9.0"
 safe-vk = { path = "../safe-vk" }
-epi = "0.8.0"
-bytemuck = { version = "1.5.0", features = ["derive"] }
+epi = "0.11.0"
+bytemuck = { version = "1.5.1", features = ["derive"] }
 
 [build-dependencies]
-shaderc = "0.7.1"
-anyhow = "1.0.38"
+shaderc = "0.7.2"
+anyhow = "1.0.40"
 glob = "0.3.0"
 
 [dev-dependencies]
 winit = "0.24.0"
-tokio = { version = "1.2.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
-ash-window = "0.5.0"
-egui_winit_platform = "0.4.0"
+tokio = { version = "1.5.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
+ash-window = "0.6.0"
+egui_winit_platform = "0.5.0"

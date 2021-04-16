@@ -10,9 +10,9 @@ edition = "2018"
 safe-vk = { path = "../safe-vk" }
 egui-backend = { path = "../egui-backend" }
 tokio = { version = "1.5.0", features = ["rt", "rt-multi-thread", "net", "process", "sync"] }
-egui_winit_platform = "0.5.0"
+egui_winit_platform = "0.4.0"
 winit = "0.24.0"
-egui = "0.11.0"
+egui = "0.8.0"
 nfd2 = "0.3.0"
 # gltf-wrapper = { path = "../gltf-wrapper" }
 rust-embed= "5.9.0"
